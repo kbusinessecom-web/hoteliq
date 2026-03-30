@@ -127,6 +127,24 @@ const api = {
   analytics: {
     getDashboard: () => api.request('/analytics/dashboard'),
   },
+
+  // AI Insights
+  aiInsights: {
+    analyze: (conversationId: string) =>
+      api.request(`/ai/analyze/${conversationId}`, { method: 'POST' }),
+    analyzeAll: () => api.request('/ai/analyze-all', { method: 'POST' }),
+    getAll: (params?: { status?: string; conversation_id?: string }) => {
+      const query = new URLSearchParams();
+      if (params?.status) query.append('status', params.status);
+      if (params?.conversation_id) query.append('conversation_id', params.conversation_id);
+      return api.request(`/ai/insights?${query.toString()}`);
+    },
+    updateStatus: (insightId: string, status: 'sent' | 'dismissed') =>
+      api.request(`/ai/insights/${insightId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status }),
+      }),
+  },
   
   // Documents
   documents: {

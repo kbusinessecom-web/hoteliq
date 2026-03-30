@@ -23,7 +23,7 @@ from models import (
     Conversation, ConversationUpdate, ConversationStatus,
     IATemplate, AnalyticsSnapshot,
     MessageTemplate, MessageTemplateCreate, MessageTemplateUpdate,
-    PushToken,
+    PushToken, ConversationInsight, InsightType, InsightStatus,
     LoginRequest, LoginResponse, SessionDataRequest,
     AISuggestionRequest, AISuggestionResponse
 )
@@ -767,6 +767,202 @@ async def use_template(template_id: str, request: Request):
         raise HTTPException(status_code=404, detail="Template not found")
     
     return {"message": "Usage count incremented"}
+
+# ============================================================================
+# AI INSIGHTS ENDPOINTS
+# ============================================================================
+
+@api_router.post("/ai/analyze/{conversation_id}")
+async def analyze_conversation(conversation_id: str, request: Request):
+    """Analyze a conversation and generate AI insights"""
+    user = await get_current_user(db, request)
+    
+    # Verify conversation
+    conv = await db.conversations.find_one(
+        {"conversation_id": conversation_id, "hotel_id": user.hotel_id},
+        {"_id": 0}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Get messages
+    messages = await db.messages.find(
+        {"conversation_id": conversation_id},
+        {"_id": 0}
+    ).sort("timestamp", 1).to_list(50)
+    
+    # Get guest info
+    guest_doc = await db.guests.find_one({"guest_id": conv.get("guest_id")}, {"_id": 0})
+    guest_name = guest_doc.get("name", "Client") if guest_doc else "Client"
+    
+    # Get hotel info
+    hotel_doc = await db.hotels.find_one({"hotel_id": user.hotel_id}, {"_id": 0})
+    hotel_name = hotel_doc.get("name", "Hôtel") if hotel_doc else "Hôtel"
+    hotel_context = hotel_doc.get("brand_profile") if hotel_doc else None
+    
+    # Delete old pending insights for this conversation to avoid duplicates
+    await db.conversation_insights.delete_many({
+        "conversation_id": conversation_id,
+        "status": InsightStatus.PENDING
+    })
+    
+    # Generate insights via AI
+    raw_insights = await ai_service.analyze_conversation_for_insights(
+        conversation_id=conversation_id,
+        messages=[dict(m) for m in messages],
+        guest_name=guest_name,
+        hotel_name=hotel_name,
+        hotel_context=hotel_context
+    )
+    
+    # Store insights
+    stored_insights = []
+    for raw in raw_insights:
+        insight = ConversationInsight(
+            conversation_id=conversation_id,
+            hotel_id=user.hotel_id,
+            guest_id=conv.get("guest_id", ""),
+            guest_name=guest_name,
+            insight_type=InsightType(raw["type"]),
+            title=raw["title"],
+            description=raw["description"],
+            suggested_message=raw["suggested_message"],
+            confidence_score=raw["confidence"],
+            potential_revenue=raw["potential_revenue"],
+        )
+        await db.conversation_insights.insert_one(insight.model_dump())
+        stored_insights.append(insight)
+    
+    return {
+        "conversation_id": conversation_id,
+        "insights_count": len(stored_insights),
+        "insights": [i.model_dump() for i in stored_insights]
+    }
+
+@api_router.get("/ai/insights")
+async def get_hotel_insights(request: Request, status: Optional[str] = None, conversation_id: Optional[str] = None):
+    """Get all AI insights for hotel (for dashboard)"""
+    user = await get_current_user(db, request)
+    
+    query: dict = {"hotel_id": user.hotel_id}
+    if status:
+        query["status"] = status
+    if conversation_id:
+        query["conversation_id"] = conversation_id
+    
+    insights = await db.conversation_insights.find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    
+    insights_list = [ConversationInsight(**i).model_dump() for i in insights]
+    
+    # Compute summary stats
+    pending = [i for i in insights_list if i["status"] == InsightStatus.PENDING]
+    total_revenue = sum(i["potential_revenue"] for i in pending if i["insight_type"] == InsightType.UPSELL)
+    by_type = {
+        InsightType.UPSELL: len([i for i in pending if i["insight_type"] == InsightType.UPSELL]),
+        InsightType.LOYALTY: len([i for i in pending if i["insight_type"] == InsightType.LOYALTY]),
+        InsightType.REVIEW: len([i for i in pending if i["insight_type"] == InsightType.REVIEW]),
+    }
+    
+    return {
+        "total": len(insights_list),
+        "pending": len(pending),
+        "total_potential_revenue": total_revenue,
+        "by_type": by_type,
+        "insights": insights_list
+    }
+
+@api_router.patch("/ai/insights/{insight_id}")
+async def update_insight_status(insight_id: str, request: Request):
+    """Update insight status (sent/dismissed)"""
+    user = await get_current_user(db, request)
+    
+    body = await request.json()
+    new_status = body.get("status")
+    
+    if new_status not in (InsightStatus.SENT, InsightStatus.DISMISSED):
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    result = await db.conversation_insights.update_one(
+        {"insight_id": insight_id, "hotel_id": user.hotel_id},
+        {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Insight not found")
+    
+    return {"message": f"Insight marked as {new_status}"}
+
+@api_router.post("/ai/analyze-all")
+async def analyze_all_conversations(request: Request):
+    """Analyze all recent conversations for the hotel (batch)"""
+    user = await get_current_user(db, request)
+    
+    # Get hotel info
+    hotel_doc = await db.hotels.find_one({"hotel_id": user.hotel_id}, {"_id": 0})
+    hotel_name = hotel_doc.get("name", "Hôtel") if hotel_doc else "Hôtel"
+    hotel_context = hotel_doc.get("brand_profile") if hotel_doc else None
+    
+    # Get recent in-progress conversations
+    conversations = await db.conversations.find(
+        {"hotel_id": user.hotel_id, "status": {"$in": ["in_progress", "new"]}},
+        {"_id": 0}
+    ).sort("last_message_at", -1).to_list(10)
+    
+    total_new_insights = 0
+    
+    for conv in conversations:
+        conv_id = conv.get("conversation_id")
+        
+        # Get messages
+        messages = await db.messages.find(
+            {"conversation_id": conv_id},
+            {"_id": 0}
+        ).sort("timestamp", 1).to_list(30)
+        
+        if len(messages) < 2:
+            continue
+        
+        # Get guest info
+        guest_doc = await db.guests.find_one({"guest_id": conv.get("guest_id")}, {"_id": 0})
+        guest_name = guest_doc.get("name", "Client") if guest_doc else "Client"
+        
+        # Delete old pending insights to refresh
+        await db.conversation_insights.delete_many({
+            "conversation_id": conv_id,
+            "status": InsightStatus.PENDING
+        })
+        
+        # Generate
+        raw_insights = await ai_service.analyze_conversation_for_insights(
+            conversation_id=conv_id,
+            messages=[dict(m) for m in messages],
+            guest_name=guest_name,
+            hotel_name=hotel_name,
+            hotel_context=hotel_context
+        )
+        
+        for raw in raw_insights:
+            insight = ConversationInsight(
+                conversation_id=conv_id,
+                hotel_id=user.hotel_id,
+                guest_id=conv.get("guest_id", ""),
+                guest_name=guest_name,
+                insight_type=InsightType(raw["type"]),
+                title=raw["title"],
+                description=raw["description"],
+                suggested_message=raw["suggested_message"],
+                confidence_score=raw["confidence"],
+                potential_revenue=raw["potential_revenue"],
+            )
+            await db.conversation_insights.insert_one(insight.model_dump())
+            total_new_insights += 1
+    
+    return {
+        "conversations_analyzed": len(conversations),
+        "new_insights": total_new_insights
+    }
 
 # ============================================================================
 # HEALTH CHECK

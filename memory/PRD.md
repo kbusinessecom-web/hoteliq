@@ -75,9 +75,9 @@ User communicates in **French**. Uses the **Emergent LLM Key** for all AI capabi
 - [x] Message Templates (Feature 5) — 15 default templates seeded
 - [x] Internal Notes + @Mentions (Feature 6)
 - [x] Push Notifications infrastructure (Feature 9 partial)
+- [x] AI History Analysis (Feature 8) — upsell/loyalty/review insights via GPT-5.2
 
 ### P1 - UPCOMING
-- [ ] Feature 8: AI analytics — history analysis, upsell suggestions, loyalty program proposals, end-of-stay review requests
 - [ ] Feature 9: Full push notifications (deeplink on tap, badge count)
 - [ ] Settings screen: Secure input for Meta API keys, webhook management
 

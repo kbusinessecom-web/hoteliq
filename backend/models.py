@@ -42,6 +42,16 @@ class MessageType(str, Enum):
     NORMAL = "normal"
     INTERNAL_NOTE = "internal_note"
 
+class InsightType(str, Enum):
+    UPSELL = "upsell"
+    LOYALTY = "loyalty"
+    REVIEW = "review"
+
+class InsightStatus(str, Enum):
+    PENDING = "pending"
+    SENT = "sent"
+    DISMISSED = "dismissed"
+
 class SubscriptionPlan(str, Enum):
     ESSENTIAL = "essential"
     PRO = "pro"
@@ -171,6 +181,22 @@ class PushToken(BaseModel):
     token: str
     device_type: str = "unknown"
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class ConversationInsight(BaseModel):
+    insight_id: str = Field(default_factory=lambda: f"ins_{uuid.uuid4().hex[:12]}")
+    conversation_id: str
+    hotel_id: str
+    guest_id: str = ""
+    guest_name: str = ""
+    insight_type: InsightType
+    title: str
+    description: str
+    suggested_message: str
+    confidence_score: float = 0.7
+    potential_revenue: float = 0.0
+    status: InsightStatus = InsightStatus.PENDING
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Conversation(BaseModel):
     conversation_id: str = Field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:12]}")

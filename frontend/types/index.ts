@@ -125,6 +125,47 @@ export interface AISuggestion {
   language: string;
 }
 
+export enum InsightType {
+  UPSELL = 'upsell',
+  LOYALTY = 'loyalty',
+  REVIEW = 'review',
+}
+
+export enum InsightStatus {
+  PENDING = 'pending',
+  SENT = 'sent',
+  DISMISSED = 'dismissed',
+}
+
+export interface ConversationInsight {
+  insight_id: string;
+  conversation_id: string;
+  hotel_id: string;
+  guest_id: string;
+  guest_name: string;
+  insight_type: InsightType;
+  title: string;
+  description: string;
+  suggested_message: string;
+  confidence_score: number;
+  potential_revenue: number;
+  status: InsightStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AIInsightsSummary {
+  total: number;
+  pending: number;
+  total_potential_revenue: number;
+  by_type: {
+    upsell: number;
+    loyalty: number;
+    review: number;
+  };
+  insights: ConversationInsight[];
+}
+
 export interface MessageTemplate {
   template_id: string;
   hotel_id: string;

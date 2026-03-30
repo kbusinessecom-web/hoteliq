@@ -28,9 +28,10 @@ import CanalBadge from '../../components/CanalBadge';
 import EmojiPicker from '../../components/EmojiPicker';
 import TemplatesPicker from '../../components/TemplatesPicker';
 import MentionPicker from '../../components/MentionPicker';
+import AIInsightCard from '../../components/AIInsightCard';
 import api from '../../services/api';
 import websocketService from '../../services/websocket';
-import { Conversation, Message, MessageDirection, MessageAuthor, MessageType, Guest, AISuggestion, User } from '../../types';
+import { Conversation, Message, MessageDirection, MessageAuthor, MessageType, Guest, AISuggestion, User, ConversationInsight, InsightStatus } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 
 export default function ConversationScreen() {
@@ -54,6 +55,9 @@ export default function ConversationScreen() {
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   const [pendingMentions, setPendingMentions] = useState<string[]>([]);
   const [hotelName, setHotelName] = useState<string>('');
+  const [insights, setInsights] = useState<ConversationInsight[]>([]);
+  const [showInsights, setShowInsights] = useState(false);
+  const [isAnalyzingInsights, setIsAnalyzingInsights] = useState(false);
   
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -62,6 +66,7 @@ export default function ConversationScreen() {
   useEffect(() => {
     loadConversation();
     loadTeamMembers();
+    loadInsights();
     registerPushNotifications();
     
     // Setup WebSocket listeners
@@ -88,6 +93,47 @@ export default function ConversationScreen() {
       setTeamMembers(members.filter((m: User) => m.user_id !== user?.user_id));
     } catch (error) {
       console.error('Failed to load team members:', error);
+    }
+  };
+
+  const loadInsights = async () => {
+    try {
+      const data = await api.aiInsights.getAll({ conversation_id: id, status: 'pending' });
+      setInsights(data.insights || []);
+    } catch (error) {
+      console.error('Failed to load insights:', error);
+    }
+  };
+
+  const handleAnalyzeConversation = async () => {
+    setIsAnalyzingInsights(true);
+    try {
+      const result = await api.aiInsights.analyze(id);
+      setInsights(result.insights || []);
+      setShowInsights(true);
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || "Impossible d'analyser la conversation");
+    } finally {
+      setIsAnalyzingInsights(false);
+    }
+  };
+
+  const handleUseInsight = async (message: string, insightId: string) => {
+    try {
+      await api.aiInsights.updateStatus(insightId, 'sent');
+      setInsights((prev) => prev.filter((i) => i.insight_id !== insightId));
+    } catch {}
+    setMessageText(message);
+    setShowInsights(false);
+    inputRef.current?.focus();
+  };
+
+  const handleDismissInsight = async (insightId: string) => {
+    try {
+      await api.aiInsights.updateStatus(insightId, 'dismissed');
+      setInsights((prev) => prev.filter((i) => i.insight_id !== insightId));
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message);
     }
   };
 
@@ -404,6 +450,18 @@ export default function ConversationScreen() {
           >
             <Ionicons name="information-circle" size={24} color={Colors.primary[600]} />
           </Pressable>
+          
+          <Pressable
+            onPress={handleAnalyzeConversation}
+            disabled={isAnalyzingInsights}
+            style={styles.headerButton}
+          >
+            {isAnalyzingInsights ? (
+              <ActivityIndicator size="small" color={Colors.accent[600]} />
+            ) : (
+              <Ionicons name="sparkles" size={22} color={Colors.accent[600]} />
+            )}
+          </Pressable>
         </View>
         
         {/* Guest Info Panel */}
@@ -447,6 +505,41 @@ export default function ConversationScreen() {
           </Card>
         )}
         
+        {/* AI Insights Banner */}
+        {insights.length > 0 && (
+          <Pressable
+            style={styles.insightsBanner}
+            onPress={() => setShowInsights(!showInsights)}
+          >
+            <Ionicons name="sparkles" size={16} color={Colors.accent[600]} />
+            <Text style={styles.insightsBannerText}>
+              {insights.length} opportunité{insights.length > 1 ? 's' : ''} IA détectée{insights.length > 1 ? 's' : ''}
+            </Text>
+            <Ionicons
+              name={showInsights ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={Colors.accent[600]}
+            />
+          </Pressable>
+        )}
+
+        {/* AI Insights Panel */}
+        {showInsights && (
+          <View style={styles.insightsPanel}>
+            <ScrollView style={styles.insightsScroll} nestedScrollEnabled>
+              {insights.map((insight) => (
+                <AIInsightCard
+                  key={insight.insight_id}
+                  insight={insight}
+                  onUse={handleUseInsight}
+                  onDismiss={handleDismissInsight}
+                  compact
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
         {/* Messages List */}
         <FlatList
           ref={flatListRef}
@@ -1024,5 +1117,31 @@ const styles = StyleSheet.create({
   },
   sendButtonNote: {
     backgroundColor: Colors.warning.DEFAULT,
+  },
+  // AI Insights
+  insightsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    backgroundColor: Colors.accent[50],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.accent[200],
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[2],
+  },
+  insightsBannerText: {
+    flex: 1,
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.semibold,
+    color: Colors.accent[700],
+  },
+  insightsPanel: {
+    maxHeight: 280,
+    backgroundColor: Colors.neutral[50],
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.neutral[200],
+  },
+  insightsScroll: {
+    padding: Spacing[3],
   },
 });

@@ -260,12 +260,28 @@ test_plan:
   test_priority: "high_first"
 
 agent_communication:
-  - agent: "testing"
+  - agent: "main"
     message: |
-      17/18 tests passed. 1 failure: hashed_password field exposed in /api/users.
-      Templates API fully functional. Internal notes functional. Push tokens functional.
-      FIXED: UserPublic model added, /api/users now returns only safe fields (confirmed: no hashed_password, no google_id).
-      All backend features now 18/18.
+      Feature 8 implemented:
+      
+      BACKEND:
+      - ConversationInsight model (insight_id, type: upsell/loyalty/review, title, description, suggested_message, confidence_score, potential_revenue, status: pending/sent/dismissed)
+      - ai_service.analyze_conversation_for_insights() - AI analysis using OpenAI GPT (Emergent LLM Key)
+      - POST /api/ai/analyze/{conversation_id} - single conversation analysis
+      - POST /api/ai/analyze-all - batch analysis of all recent conversations
+      - GET /api/ai/insights - get all insights with stats (total, pending, revenue_potential, by_type)
+      - PATCH /api/ai/insights/{insight_id} - update status (sent/dismissed)
+      
+      FRONTEND:
+      - AIInsightCard.tsx component (colored by type, revenue badge, use/dismiss buttons)
+      - Dashboard: new "Recommandations IA" section with Analyser button, stats row, and insight cards
+      - Conversation screen: ✨ sparkles button in header triggers analysis, insights banner shows pending count
+      
+      TESTED MANUALLY:
+      - POST /api/ai/analyze → detected "Petit-déjeuner premium" upsell at 62% confidence, 90€ potential
+      - POST /api/ai/analyze-all → analyzed 4 conversations, generated 3 total insights
+      
+      Test: Login, open Dashboard, click "Analyser" → should generate AI insights. Then open conversation, click ✨ → insights appear.
 
       
       FEATURE 5 - Message Templates:

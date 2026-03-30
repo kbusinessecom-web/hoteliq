@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+// Use explicit CJS path to avoid Metro bundler picking up ESM version (import.meta issue)
+import { persist, createJSONStorage } from 'zustand/middleware.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface OnboardingState {
