@@ -123,9 +123,10 @@ const api = {
     getById: (id: string) => api.request(`/guests/${id}`),
   },
   
-  // Analytics
-  analytics: {
-    getDashboard: () => api.request('/analytics/dashboard'),
+  // Reports
+  reports: {
+    getAll: () => api.request('/reports'),
+    send: () => api.request('/reports/send', { method: 'POST' }),
   },
 
   // AI Insights

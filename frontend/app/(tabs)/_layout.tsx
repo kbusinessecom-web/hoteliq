@@ -38,6 +38,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="reports"
+        options={{
+          title: 'Rapports',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="mail" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="guests"
         options={{
           title: 'Clients',

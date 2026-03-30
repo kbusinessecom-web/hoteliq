@@ -9,11 +9,18 @@ import logging
 from typing import List, Optional
 import base64
 
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 # Import WebSocket
 from websocket import sio, socket_app, emit_new_message, emit_conversation_updated, emit_assignment_changed
 
 # Import Document Analysis
 from document_service import document_analysis_service
+
+# Import Weekly Report Service
+from weekly_report_service import WeeklyReportService
 
 # Import models
 from models import (
@@ -24,10 +31,14 @@ from models import (
     IATemplate, AnalyticsSnapshot,
     MessageTemplate, MessageTemplateCreate, MessageTemplateUpdate,
     PushToken, ConversationInsight, InsightType, InsightStatus,
+    WeeklyReport,
     LoginRequest, LoginResponse, SessionDataRequest,
     AISuggestionRequest, AISuggestionResponse
 )
 import httpx
+
+# Scheduler (APScheduler)
+scheduler = AsyncIOScheduler(timezone="Europe/Paris")
 
 # Import auth utilities
 from auth import (
@@ -47,6 +58,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# Global service instance (initialized on startup)
+report_service: Optional[WeeklyReportService] = None
 
 # Create app
 app = FastAPI(title="HotelIQ API", version="1.0.0")
@@ -1015,6 +1029,32 @@ async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
+# ============================================================================
+# WEEKLY REPORTS ENDPOINTS
+# ============================================================================
+
+@api_router.post("/reports/send")
+async def send_weekly_report(request: Request):
+    """Manually trigger weekly report for the current hotel"""
+    user = await get_current_user(db, request)
+
+    result = await report_service.send_report_for_hotel(user.hotel_id)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Failed to send report"))
+    return result
+
+@api_router.get("/reports")
+async def get_reports(request: Request):
+    """Get list of past weekly reports for this hotel"""
+    user = await get_current_user(db, request)
+
+    reports = await db.weekly_reports.find(
+        {"hotel_id": user.hotel_id},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+
+    return [WeeklyReport(**r).model_dump() for r in reports]
+
 # Include router
 app.include_router(api_router)
 
@@ -1027,8 +1067,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize scheduler for weekly reports (every Monday at 8am Paris time)"""
+    global report_service
+    report_service = WeeklyReportService(db)
+
+    async def send_all_weekly_reports_job():
+        logger.info("⏰ Sending weekly reports to all hotels...")
+        results = await report_service.send_all_reports()
+        logger.info(f"Weekly reports sent: {results}")
+
+    scheduler.add_job(
+        send_all_weekly_reports_job,
+        CronTrigger(day_of_week='mon', hour=8, minute=0, timezone='Europe/Paris'),
+        id='weekly_reports',
+        replace_existing=True,
+    )
+    scheduler.start()
+    logger.info("✅ APScheduler started — Weekly reports scheduled every Monday at 8am")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    if scheduler.running:
+        scheduler.shutdown()
     client.close()
 
 # Mount Socket.IO

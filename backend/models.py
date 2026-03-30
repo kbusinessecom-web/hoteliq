@@ -198,6 +198,23 @@ class ConversationInsight(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+class WeeklyReport(BaseModel):
+    report_id: str = Field(default_factory=lambda: f"rep_{uuid.uuid4().hex[:12]}")
+    hotel_id: str
+    week_start: str
+    week_end: str
+    week_label: str = ""
+    recipient_email: str
+    recipient_name: str = ""
+    stats: Dict = Field(default_factory=dict)
+    ai_summary: str = ""
+    ai_actions: List[str] = Field(default_factory=list)
+    status: str = "pending"  # pending, sent, failed
+    sent_at: Optional[str] = None
+    email_id: Optional[str] = None
+    error: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 class Conversation(BaseModel):
     conversation_id: str = Field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:12]}")
     hotel_id: str

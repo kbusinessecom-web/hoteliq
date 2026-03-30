@@ -166,7 +166,36 @@ export interface AIInsightsSummary {
   insights: ConversationInsight[];
 }
 
-export interface MessageTemplate {
+export interface WeeklyReport {
+  report_id: string;
+  hotel_id: string;
+  week_start: string;
+  week_end: string;
+  week_label: string;
+  recipient_email: string;
+  recipient_name: string;
+  stats: {
+    new_conversations: number;
+    resolved_conversations: number;
+    messages_sent: number;
+    messages_received: number;
+    insights_detected: number;
+    insights_acted: number;
+    insights_upsell: number;
+    insights_loyalty: number;
+    insights_review: number;
+    potential_revenue: number;
+    response_rate: number;
+    prev_new_conversations: number;
+  };
+  ai_summary: string;
+  ai_actions: string[];
+  status: 'pending' | 'sent' | 'failed';
+  sent_at: string | null;
+  email_id: string | null;
+  error: string | null;
+  created_at: string;
+}
   template_id: string;
   hotel_id: string;
   name: string;
