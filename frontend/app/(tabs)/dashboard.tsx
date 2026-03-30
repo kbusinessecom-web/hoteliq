@@ -150,7 +150,7 @@ export default function DashboardScreen() {
           
           <View style={styles.statRow}>
             <Text style={styles.statLabel}>Temps de réponse moyen</Text>
-            <Text style={styles.statValue}>< 90 secondes</Text>
+            <Text style={styles.statValue}>{'< 90 secondes'}</Text>
           </View>
           
           <View style={styles.divider} />
