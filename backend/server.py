@@ -559,9 +559,9 @@ async def upload_document(
             raise HTTPException(status_code=400, detail="Le document ne contient pas assez de texte")
         
         # Get hotel info
-        hotel_doc = await db.hotels.find_one({\"hotel_id\": user.hotel_id}, {\"_id\": 0})
+        hotel_doc = await db.hotels.find_one({"hotel_id": user.hotel_id}, {"_id": 0})
         if not hotel_doc:
-            raise HTTPException(status_code=404, detail=\"Hotel not found\")
+            raise HTTPException(status_code=404, detail="Hotel not found")
         
         hotel_name = hotel_doc.get('name', 'Hotel')
         
@@ -596,7 +596,7 @@ async def upload_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f\"Document upload error: {e}\")
+        logger.error(f"Document upload error: {e}")
         raise HTTPException(status_code=500, detail="Erreur lors de l'analyse du document")
 
 @api_router.get("/hotels/brand-profile")
@@ -605,19 +605,19 @@ async def get_brand_profile(request: Request):
     user = await get_current_user(db, request)
     
     if not user.hotel_id:
-        raise HTTPException(status_code=404, detail=\"No hotel found\")
+        raise HTTPException(status_code=404, detail="No hotel found")
     
     hotel_doc = await db.hotels.find_one(
-        {\"hotel_id\": user.hotel_id},
-        {\"_id\": 0, \"brand_profile\": 1, \"training_documents\": 1}
+        {"hotel_id": user.hotel_id},
+        {"_id": 0, "brand_profile": 1, "training_documents": 1}
     )
     
     if not hotel_doc:
-        raise HTTPException(status_code=404, detail=\"Hotel not found\")
+        raise HTTPException(status_code=404, detail="Hotel not found")
     
     return {
-        \"brand_profile\": hotel_doc.get('brand_profile'),
-        \"documents_count\": len(hotel_doc.get('training_documents', []))
+        "brand_profile": hotel_doc.get('brand_profile'),
+        "documents_count": len(hotel_doc.get('training_documents', []))
     }
 
 # ============================================================================

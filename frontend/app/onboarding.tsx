@@ -7,10 +7,12 @@ import {
   ScrollView,
   Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import Colors from '../constants/Colors';
 import { FontSize, FontWeight } from '../constants/Typography';
 import Spacing from '../constants/Spacing';
@@ -58,6 +60,9 @@ export default function OnboardingScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [newMemberRole, setNewMemberRole] = useState('receptionist');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{name: string; status: string}>>([]);
+  const [brandProfile, setBrandProfile] = useState<any>(null);
   
   const canContinueStep1 = hotelName && hotelCity && roomCount > 0;
   const canContinueStep2 = connectedChannels.length > 0;
@@ -126,6 +131,58 @@ export default function OnboardingScreen() {
     }
     addTeamMember({ email: newMemberEmail, role: newMemberRole });
     setNewMemberEmail('');
+  };
+  
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        copyToCacheDirectory: true,
+      });
+      
+      if (result.canceled) {
+        return;
+      }
+      
+      const file = result.assets[0];
+      
+      // Validate file size (max 10MB)
+      if (file.size && file.size > 10 * 1024 * 1024) {
+        Alert.alert('Fichier trop volumineux', 'Taille maximale: 10MB');
+        return;
+      }
+      
+      // Upload document
+      setIsLoading(true);
+      setUploadProgress(0);
+      
+      try {
+        const uploadResult = await api.documents.upload(
+          file.uri,
+          file.name,
+          file.mimeType || 'application/octet-stream'
+        );
+        
+        setUploadProgress(100);
+        setUploadedFiles(prev => [...prev, { name: file.name, status: 'success' }]);
+        setBrandProfile(uploadResult.brand_profile);
+        
+        Alert.alert(
+          'Analyse réussie! ✨',
+          `Votre IA a appris le ton de votre marque:\n\n"${uploadResult.brand_profile?.tone || 'professionnel'}"\n\nL'IA adaptera désormais ses réponses à votre image de marque.`,
+          [{ text: 'Super!' }]
+        );
+      } catch (error: any) {
+        setUploadedFiles(prev => [...prev, { name: file.name, status: 'error' }]);
+        Alert.alert('Erreur', error.message || 'Impossible d\'analyser le document');
+      } finally {
+        setIsLoading(false);
+        setUploadProgress(0);
+      }
+    } catch (error) {
+      console.error('Document picker error:', error);
+      Alert.alert('Erreur', 'Impossible d\'ouvrir le sélecteur de fichiers');
+    }
   };
   
   const renderProgressBar = () => (
@@ -341,44 +398,83 @@ export default function OnboardingScreen() {
     <ScrollView contentContainerStyle={styles.stepContent}>
       <Text style={styles.stepTitle}>Entraînez l'IA (optionnel)</Text>
       <Text style={styles.stepSubtitle}>
-        Uploadez votre FAQ, tarifs ou exemples de réponses pour personnaliser l'IA
+        Uploadez votre FAQ, brochure ou tarifs pour personnaliser l'IA à votre image de marque
       </Text>
       
       <Card style={styles.uploadCard}>
         <Ionicons name="cloud-upload" size={48} color={Colors.accent[600]} />
         <Text style={styles.uploadTitle}>Upload de documents</Text>
         <Text style={styles.uploadText}>
-          Formats acceptés: PDF, DOCX, TXT
+          Formats acceptés: PDF, DOCX, TXT (max 10MB)
         </Text>
+        
+        {uploadProgress > 0 && uploadProgress < 100 && (
+          <View style={styles.progressBar}>
+            <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+          </View>
+        )}
+        
         <Button
           title="Parcourir"
           variant="secondary"
-          onPress={() => Alert.alert('À venir', 'Fonctionnalité d\'upload en développement')}
+          onPress={handlePickDocument}
+          loading={isLoading}
+          disabled={isLoading}
         />
       </Card>
       
-      <Text style={styles.orText}>ou</Text>
+      {uploadedFiles.length > 0 && (
+        <View style={styles.uploadedFiles}>
+          <Text style={styles.uploadedFilesTitle}>Documents analysés:</Text>
+          {uploadedFiles.map((file, index) => (
+            <View key={index} style={styles.uploadedFileItem}>
+              <Ionicons
+                name={file.status === 'success' ? 'checkmark-circle' : 'close-circle'}
+                size={20}
+                color={file.status === 'success' ? Colors.success.DEFAULT : Colors.error.DEFAULT}
+              />
+              <Text style={styles.uploadedFileName}>{file.name}</Text>
+            </View>
+          ))}
+        </View>
+      )}
       
-      <Card style={styles.questionsCard}>
-        <Text style={styles.questionsTitle}>Répondez à ces questions</Text>
-        <TextInput
-          style={styles.textarea}
-          placeholder="Quel est votre ADR moyen?"
-          placeholderTextColor={Colors.neutral[400]}
-          multiline
-        />
-        <TextInput
-          style={styles.textarea}
-          placeholder="Quelles sont vos spécialités?"
-          placeholderTextColor={Colors.neutral[400]}
-          multiline
-        />
-      </Card>
+      {brandProfile && (
+        <Card style={styles.brandProfileCard}>
+          <View style={styles.brandProfileHeader}>
+            <Ionicons name="sparkles" size={24} color={Colors.accent[600]} />
+            <Text style={styles.brandProfileTitle}>Image de marque détectée</Text>
+          </View>
+          
+          {brandProfile.tone && (
+            <View style={styles.brandProfileItem}>
+              <Text style={styles.brandProfileLabel}>Ton:</Text>
+              <Text style={styles.brandProfileValue}>{brandProfile.tone}</Text>
+            </View>
+          )}
+          
+          {brandProfile.positioning && (
+            <View style={styles.brandProfileItem}>
+              <Text style={styles.brandProfileLabel}>Positionnement:</Text>
+              <Text style={styles.brandProfileValue}>{brandProfile.positioning}</Text>
+            </View>
+          )}
+          
+          {brandProfile.values && brandProfile.values.length > 0 && (
+            <View style={styles.brandProfileItem}>
+              <Text style={styles.brandProfileLabel}>Valeurs:</Text>
+              <Text style={styles.brandProfileValue}>
+                {brandProfile.values.slice(0, 3).join(', ')}
+              </Text>
+            </View>
+          )}
+        </Card>
+      )}
       
       <View style={styles.hint}>
         <Ionicons name="information-circle" size={20} color={Colors.info.DEFAULT} />
         <Text style={styles.hintText}>
-          Vous pouvez compléter l'entraînement de l'IA à tout moment depuis Paramètres → IA
+          L'IA utilisera ces informations pour adapter le ton et le vocabulaire de ses suggestions
         </Text>
       </View>
     </ScrollView>

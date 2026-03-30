@@ -121,6 +121,41 @@ const api = {
   analytics: {
     getDashboard: () => api.request('/analytics/dashboard'),
   },
+  
+  // Documents
+  documents: {
+    upload: async (fileUri: string, fileName: string, mimeType: string) => {
+      const formData = new FormData();
+      
+      // @ts-ignore - React Native FormData supports uri
+      formData.append('file', {
+        uri: fileUri,
+        name: fileName,
+        type: mimeType,
+      });
+      
+      const url = `${API_URL}/api/documents/upload`;
+      const token = authToken;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : '',
+        },
+        credentials: 'include',
+      });
+      
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+        throw new Error(error.detail || `HTTP ${response.status}`);
+      }
+      
+      return await response.json();
+    },
+    
+    getBrandProfile: () => api.request('/hotels/brand-profile'),
+  },
 };
 
 export default api;
