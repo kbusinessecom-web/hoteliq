@@ -35,7 +35,7 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       await login(email, password);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)/inbox');
     } catch (error: any) {
       Alert.alert('Erreur', error.message || 'Connexion échouée');
     } finally {
