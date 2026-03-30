@@ -30,6 +30,11 @@ export enum MessageAuthor {
   AI = 'ai',
 }
 
+export enum MessageType {
+  NORMAL = 'normal',
+  INTERNAL_NOTE = 'internal_note',
+}
+
 export interface User {
   user_id: string;
   email: string;
@@ -88,7 +93,10 @@ export interface Message {
   content: string;
   author: MessageAuthor;
   author_user_id?: string;
+  author_name?: string;
   ia_confidence_score?: number;
+  message_type: MessageType;
+  mentions: string[];
   timestamp: string;
   read: boolean;
 }
@@ -115,6 +123,19 @@ export interface AISuggestion {
   suggestion: string;
   confidence_score: number;
   language: string;
+}
+
+export interface MessageTemplate {
+  template_id: string;
+  hotel_id: string;
+  name: string;
+  category: string;
+  content: string;
+  language: string;
+  is_default: boolean;
+  usage_count: number;
+  created_at: string;
+  created_by: string;
 }
 
 export interface AnalyticsSnapshot {

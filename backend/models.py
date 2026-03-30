@@ -38,6 +38,10 @@ class MessageAuthor(str, Enum):
     USER = "user"
     AI = "ai"
 
+class MessageType(str, Enum):
+    NORMAL = "normal"
+    INTERNAL_NOTE = "internal_note"
+
 class SubscriptionPlan(str, Enum):
     ESSENTIAL = "essential"
     PRO = "pro"
@@ -80,6 +84,17 @@ class User(BaseModel):
     hashed_password: Optional[str] = None
     # For Google OAuth
     google_id: Optional[str] = None
+
+class UserPublic(BaseModel):
+    """User model for public/team display (no sensitive fields)"""
+    user_id: str
+    email: str
+    name: str
+    picture: Optional[str] = None
+    role: UserRole = UserRole.RECEPTIONIST
+    hotel_id: Optional[str] = None
+    notification_preferences: Dict[str, bool] = Field(default_factory=lambda: {"email": True, "push": True})
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -135,7 +150,10 @@ class Message(BaseModel):
     content: str
     author: MessageAuthor
     author_user_id: Optional[str] = None  # If sent by a user
+    author_name: Optional[str] = None  # Display name for notes
     ia_confidence_score: Optional[float] = None  # 0-1 for AI suggestions
+    message_type: MessageType = MessageType.NORMAL
+    mentions: List[str] = Field(default_factory=list)  # List of mentioned user_ids
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     read: bool = False
 
@@ -143,6 +161,16 @@ class MessageCreate(BaseModel):
     content: str
     direction: MessageDirection = MessageDirection.OUTBOUND
     author: MessageAuthor = MessageAuthor.USER
+    message_type: MessageType = MessageType.NORMAL
+    mentions: List[str] = Field(default_factory=list)
+
+class PushToken(BaseModel):
+    token_id: str = Field(default_factory=lambda: f"ptok_{uuid.uuid4().hex[:12]}")
+    user_id: str
+    hotel_id: str
+    token: str
+    device_type: str = "unknown"
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 class Conversation(BaseModel):
     conversation_id: str = Field(default_factory=lambda: f"conv_{uuid.uuid4().hex[:12]}")

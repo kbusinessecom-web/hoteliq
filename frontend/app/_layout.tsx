@@ -1,8 +1,18 @@
 import { Stack } from 'expo-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
+import * as Notifications from 'expo-notifications';
 import { useAuthStore } from '../store/authStore';
 import websocketService from '../services/websocket';
+
+// Configure notifications handler globally
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
 
 const queryClient = new QueryClient();
 

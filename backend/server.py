@@ -17,15 +17,17 @@ from document_service import document_analysis_service
 
 # Import models
 from models import (
-    Hotel, HotelCreate, User, UserCreate, UserRole, UserSession,
+    Hotel, HotelCreate, User, UserCreate, UserPublic, UserRole, UserSession,
     Canal, CanalCreate, CanalType, CanalStatus,
-    Guest, GuestCreate, Message, MessageCreate, MessageDirection, MessageAuthor,
+    Guest, GuestCreate, Message, MessageCreate, MessageDirection, MessageAuthor, MessageType,
     Conversation, ConversationUpdate, ConversationStatus,
     IATemplate, AnalyticsSnapshot,
     MessageTemplate, MessageTemplateCreate, MessageTemplateUpdate,
+    PushToken,
     LoginRequest, LoginResponse, SessionDataRequest,
     AISuggestionRequest, AISuggestionResponse
 )
+import httpx
 
 # Import auth utilities
 from auth import (
@@ -56,6 +58,32 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# PUSH NOTIFICATIONS
+# ============================================================================
+
+async def send_push_notification(push_token: str, title: str, body: str, data: dict = None):
+    """Send push notification via Expo Push API"""
+    if not push_token or not push_token.startswith('ExponentPushToken'):
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                'https://exp.host/--/api/v2/push/send',
+                json={
+                    'to': push_token,
+                    'title': title,
+                    'body': body,
+                    'data': data or {},
+                    'sound': 'default',
+                },
+                timeout=10.0
+            )
+            return response.json()
+    except Exception as e:
+        logger.error(f"Push notification error: {e}")
+        return None
 
 # ============================================================================
 # AUTH ENDPOINTS
@@ -381,7 +409,7 @@ async def send_message(
     message_data: MessageCreate,
     request: Request
 ):
-    """Send a message in a conversation"""
+    """Send a message or internal note in a conversation"""
     user = await get_current_user(db, request)
     
     # Verify conversation
@@ -397,25 +425,44 @@ async def send_message(
         content=message_data.content,
         direction=message_data.direction,
         author=message_data.author,
-        author_user_id=user.user_id if message_data.author == MessageAuthor.USER else None
+        author_user_id=user.user_id if message_data.author == MessageAuthor.USER else None,
+        author_name=user.name,
+        message_type=message_data.message_type,
+        mentions=message_data.mentions,
     )
     
     await db.messages.insert_one(message.model_dump())
     
-    # Update conversation
-    await db.conversations.update_one(
-        {"conversation_id": conversation_id},
-        {
-            "$set": {
-                "last_message": message.content[:100],
-                "last_message_at": message.timestamp,
-                "status": ConversationStatus.IN_PROGRESS
+    # Only update conversation last_message if it's a normal message (not internal note)
+    if message_data.message_type == MessageType.NORMAL:
+        await db.conversations.update_one(
+            {"conversation_id": conversation_id},
+            {
+                "$set": {
+                    "last_message": message.content[:100],
+                    "last_message_at": message.timestamp,
+                    "status": ConversationStatus.IN_PROGRESS
+                }
             }
-        }
-    )
+        )
     
     # Emit real-time event
     await emit_new_message(conversation_id, message.model_dump())
+    
+    # Send push notifications for mentions in internal notes
+    if message_data.mentions and message_data.message_type == MessageType.INTERNAL_NOTE:
+        for mentioned_user_id in message_data.mentions:
+            push_token_doc = await db.push_tokens.find_one(
+                {"user_id": mentioned_user_id},
+                sort=[("created_at", -1)]
+            )
+            if push_token_doc:
+                await send_push_notification(
+                    push_token=push_token_doc['token'],
+                    title=f"🔔 Mention de {user.name}",
+                    body=message.content[:100],
+                    data={"conversation_id": conversation_id, "type": "mention"}
+                )
     
     return message
 
@@ -724,6 +771,48 @@ async def use_template(template_id: str, request: Request):
 # ============================================================================
 # HEALTH CHECK
 # ============================================================================
+
+@api_router.get("/users", response_model=List[UserPublic])
+async def get_team_members(request: Request):
+    """Get all team members in the same hotel"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        return []
+    
+    users = await db.users.find(
+        {"hotel_id": user.hotel_id},
+        {"_id": 0, "hashed_password": 0, "google_id": 0}
+    ).to_list(100)
+    
+    return [UserPublic(**u) for u in users]
+
+@api_router.post("/push-tokens")
+async def register_push_token(request: Request):
+    """Register device push token for notifications"""
+    user = await get_current_user(db, request)
+    
+    body = await request.json()
+    token = body.get('token')
+    device_type = body.get('device_type', 'unknown')
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="Token required")
+    
+    push_token = PushToken(
+        user_id=user.user_id,
+        hotel_id=user.hotel_id or '',
+        token=token,
+        device_type=device_type
+    )
+    
+    await db.push_tokens.update_one(
+        {"user_id": user.user_id, "token": token},
+        {"$set": push_token.model_dump()},
+        upsert=True
+    )
+    
+    return {"message": "Push token registered"}
 
 @api_router.get("/health")
 async def health_check():

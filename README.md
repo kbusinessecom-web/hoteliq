@@ -105,7 +105,7 @@ cd /app/frontend
 yarn start
 
 # L'app est accessible via:
-# - Web: https://saas-builder-105.preview.emergentagent.com
+# - Web: https://hoteliq-templates.preview.emergentagent.com
 # - QR Code pour Expo Go
 ```
 
@@ -139,9 +139,9 @@ L'application inclut :
 
 ## 🌐 URLs
 
-- **Backend API** : https://saas-builder-105.preview.emergentagent.com/api
-- **Frontend Web** : https://saas-builder-105.preview.emergentagent.com
-- **API Docs** : https://saas-builder-105.preview.emergentagent.com/api/docs
+- **Backend API** : https://hoteliq-templates.preview.emergentagent.com/api
+- **Frontend Web** : https://hoteliq-templates.preview.emergentagent.com
+- **API Docs** : https://hoteliq-templates.preview.emergentagent.com/api/docs
 
 ## 🔐 Sécurité
 

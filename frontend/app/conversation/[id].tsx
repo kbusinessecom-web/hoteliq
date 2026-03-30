@@ -17,6 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 import Colors from '../../constants/Colors';
 import { FontSize, FontWeight } from '../../constants/Typography';
 import Spacing from '../../constants/Spacing';
@@ -24,9 +26,11 @@ import Card from '../../components/Card';
 import Button from '../../components/Button';
 import CanalBadge from '../../components/CanalBadge';
 import EmojiPicker from '../../components/EmojiPicker';
+import TemplatesPicker from '../../components/TemplatesPicker';
+import MentionPicker from '../../components/MentionPicker';
 import api from '../../services/api';
 import websocketService from '../../services/websocket';
-import { Conversation, Message, MessageDirection, MessageAuthor, Guest, AISuggestion } from '../../types';
+import { Conversation, Message, MessageDirection, MessageAuthor, MessageType, Guest, AISuggestion, User } from '../../types';
 import { useAuthStore } from '../../store/authStore';
 
 export default function ConversationScreen() {
@@ -43,6 +47,13 @@ export default function ConversationScreen() {
   const [showGuestPanel, setShowGuestPanel] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [isInternalNote, setIsInternalNote] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<User[]>([]);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [pendingMentions, setPendingMentions] = useState<string[]>([]);
+  const [hotelName, setHotelName] = useState<string>('');
   
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -50,6 +61,8 @@ export default function ConversationScreen() {
   
   useEffect(() => {
     loadConversation();
+    loadTeamMembers();
+    registerPushNotifications();
     
     // Setup WebSocket listeners
     websocketService.onNewMessage(handleNewMessage);
@@ -68,6 +81,48 @@ export default function ConversationScreen() {
     };
   }, [id]);
   
+  const loadTeamMembers = async () => {
+    try {
+      const members = await api.users.getTeam();
+      // Exclude current user
+      setTeamMembers(members.filter((m: User) => m.user_id !== user?.user_id));
+    } catch (error) {
+      console.error('Failed to load team members:', error);
+    }
+  };
+
+  const registerPushNotifications = async () => {
+    try {
+      if (!Device.isDevice) return; // Skip in simulator/web
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') return;
+
+      const tokenData = await Notifications.getExpoPushTokenAsync();
+      const deviceType = Platform.OS;
+      await api.pushTokens.register(tokenData.data, deviceType);
+      console.log('📲 Push token registered');
+    } catch (error) {
+      console.error('Push notification setup failed (expected on web):', error);
+    }
+  };
+
+  const handleMentionSelect = (selectedUser: User) => {
+    // Insert @name in text, replace the @query part
+    const atIndex = messageText.lastIndexOf('@');
+    const beforeAt = messageText.substring(0, atIndex);
+    const newText = `${beforeAt}@${selectedUser.name} `;
+    setMessageText(newText);
+    setPendingMentions((prev) => [...prev, selectedUser.user_id]);
+    setShowMentionPicker(false);
+    setMentionQuery('');
+    inputRef.current?.focus();
+  };
+
   const handleNewMessage = (data: any) => {
     if (data.conversation_id === id) {
       console.log('📨 New message received via WebSocket');
@@ -101,6 +156,25 @@ export default function ConversationScreen() {
   
   const handleTextChange = (text: string) => {
     setMessageText(text);
+    
+    // Detect @mention
+    const atIndex = text.lastIndexOf('@');
+    if (atIndex >= 0) {
+      const afterAt = text.substring(atIndex + 1);
+      // Only show if no space after @
+      if (!afterAt.includes(' ') && afterAt.length >= 0) {
+        setMentionQuery(afterAt);
+        setShowMentionPicker(true);
+        // Auto-switch to internal note when @mention
+        if (!isInternalNote) setIsInternalNote(true);
+      } else {
+        setShowMentionPicker(false);
+        setMentionQuery('');
+      }
+    } else {
+      setShowMentionPicker(false);
+      setMentionQuery('');
+    }
     
     // Emit typing start
     if (text.length > 0 && user) {
@@ -136,6 +210,12 @@ export default function ConversationScreen() {
       const guestData = await api.guests.getById(convData.guest_id);
       setGuest(guestData);
       
+      // Load hotel name
+      try {
+        const hotelData = await api.hotels.getMy();
+        setHotelName(hotelData.name);
+      } catch {}
+      
       // Auto-generate AI suggestion if there's a recent guest message
       const lastMessage = messagesData[messagesData.length - 1];
       if (lastMessage && lastMessage.direction === MessageDirection.INBOUND) {
@@ -166,17 +246,28 @@ export default function ConversationScreen() {
     
     try {
       setIsSending(true);
-      const newMessage = await api.conversations.sendMessage(id, messageText.trim());
+      const newMessage = await api.conversations.sendMessage(
+        id,
+        messageText.trim(),
+        {
+          message_type: isInternalNote ? 'internal_note' : 'normal',
+          mentions: pendingMentions,
+        }
+      );
       setMessages([...messages, newMessage]);
       setMessageText('');
       setAiSuggestion(null);
+      setPendingMentions([]);
+      setShowMentionPicker(false);
+      // Reset internal note mode after sending
+      setIsInternalNote(false);
       
       // Scroll to bottom
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 100);
     } catch (error: any) {
-      Alert.alert('Erreur', error.message || 'Impossible d\'envoyer le message');
+      Alert.alert('Erreur', error.message || "Impossible d'envoyer le message");
     } finally {
       setIsSending(false);
     }
@@ -209,6 +300,27 @@ export default function ConversationScreen() {
   const renderMessage = ({ item }: { item: Message }) => {
     const isOutbound = item.direction === MessageDirection.OUTBOUND;
     const isAI = item.author === MessageAuthor.AI;
+    const isNote = item.message_type === MessageType.INTERNAL_NOTE;
+    
+    if (isNote) {
+      return (
+        <View style={styles.noteContainer}>
+          <View style={styles.noteBubble}>
+            <View style={styles.noteHeader}>
+              <Ionicons name="lock-closed" size={12} color={Colors.warning.dark} />
+              <Text style={styles.noteLabel}>Note interne</Text>
+              {item.author_name && (
+                <Text style={styles.noteAuthor}>{item.author_name}</Text>
+              )}
+            </View>
+            <Text style={styles.noteText}>{item.content}</Text>
+            <Text style={styles.noteTime}>
+              {format(new Date(item.timestamp), 'HH:mm', { locale: fr })}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     
     return (
       <View
@@ -396,8 +508,27 @@ export default function ConversationScreen() {
           </Card>
         )}
         
+        {/* Mention Picker (above composer) */}
+        <MentionPicker
+          visible={showMentionPicker}
+          query={mentionQuery}
+          teamMembers={teamMembers}
+          onSelect={handleMentionSelect}
+        />
+        
         {/* Composer */}
-        <View style={styles.composer}>
+        <View style={[styles.composer, isInternalNote && styles.composerNote]}>
+          {/* Internal Note Banner */}
+          {isInternalNote && (
+            <View style={styles.noteBanner}>
+              <Ionicons name="lock-closed" size={14} color={Colors.warning.dark} />
+              <Text style={styles.noteBannerText}>Note interne — invisible pour le client</Text>
+              <Pressable onPress={() => { setIsInternalNote(false); setPendingMentions([]); }}>
+                <Ionicons name="close" size={16} color={Colors.warning.dark} />
+              </Pressable>
+            </View>
+          )}
+          
           <View style={styles.composerActions}>
             <Pressable
               onPress={handleMarkResolved}
@@ -412,15 +543,38 @@ export default function ConversationScreen() {
             >
               <Ionicons name="happy" size={24} color={Colors.accent[600]} />
             </Pressable>
+            
+            {/* Templates button */}
+            <Pressable
+              onPress={() => setShowTemplates(true)}
+              style={styles.actionButton}
+            >
+              <Ionicons name="document-text" size={24} color={Colors.primary[500]} />
+            </Pressable>
+            
+            {/* Internal note toggle */}
+            <Pressable
+              onPress={() => {
+                setIsInternalNote(!isInternalNote);
+                if (isInternalNote) setPendingMentions([]);
+              }}
+              style={[styles.actionButton, isInternalNote && styles.actionButtonActive]}
+            >
+              <Ionicons
+                name={isInternalNote ? 'lock-closed' : 'lock-open'}
+                size={22}
+                color={isInternalNote ? Colors.warning.dark : Colors.neutral[500]}
+              />
+            </Pressable>
           </View>
           
           <View style={styles.inputContainer}>
             <TextInput
               ref={inputRef}
-              style={styles.input}
+              style={[styles.input, isInternalNote && styles.inputNote]}
               value={messageText}
               onChangeText={handleTextChange}
-              placeholder={`Répondre via ${conversation?.canal_type}...`}
+              placeholder={isInternalNote ? 'Note interne (@mentionner un collègue)...' : `Répondre via ${conversation?.canal_type}...`}
               placeholderTextColor={Colors.neutral[400]}
               multiline
               maxLength={1000}
@@ -430,6 +584,7 @@ export default function ConversationScreen() {
               disabled={!messageText.trim() || isSending}
               style={[
                 styles.sendButton,
+                isInternalNote && styles.sendButtonNote,
                 (!messageText.trim() || isSending) && styles.sendButtonDisabled,
               ]}
             >
@@ -437,7 +592,7 @@ export default function ConversationScreen() {
                 <ActivityIndicator size="small" color={Colors.neutral[0]} />
               ) : (
                 <Ionicons
-                  name="send"
+                  name={isInternalNote ? 'lock-closed' : 'send'}
                   size={20}
                   color={messageText.trim() ? Colors.neutral[0] : Colors.neutral[400]}
                 />
@@ -458,6 +613,18 @@ export default function ConversationScreen() {
           visible={showEmojiPicker}
           onClose={() => setShowEmojiPicker(false)}
           onEmojiSelect={handleEmojiSelect}
+        />
+        
+        {/* Templates Picker */}
+        <TemplatesPicker
+          visible={showTemplates}
+          onClose={() => setShowTemplates(false)}
+          onSelect={(content) => {
+            setMessageText(content);
+            inputRef.current?.focus();
+          }}
+          guestName={guest?.name}
+          hotelName={hotelName}
         />
         
         {/* Loading AI Indicator */}
@@ -783,5 +950,79 @@ const styles = StyleSheet.create({
     fontSize: FontSize.sm,
     color: Colors.neutral[600],
     fontStyle: 'italic',
+  },
+  // Internal Note styles
+  noteContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginVertical: Spacing[1],
+  },
+  noteBubble: {
+    width: '90%',
+    backgroundColor: Colors.warning.light,
+    borderWidth: 1,
+    borderColor: Colors.warning.DEFAULT,
+    borderRadius: Spacing[3],
+    padding: Spacing[3],
+    borderStyle: 'dashed',
+  },
+  noteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[1],
+    marginBottom: Spacing[1],
+  },
+  noteLabel: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: Colors.warning.dark,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  noteAuthor: {
+    fontSize: FontSize.xs,
+    color: Colors.warning.dark,
+    opacity: 0.8,
+    marginLeft: 'auto',
+  },
+  noteText: {
+    fontSize: FontSize.base,
+    color: Colors.neutral[800],
+    lineHeight: 22,
+  },
+  noteTime: {
+    fontSize: FontSize.xs,
+    color: Colors.warning.dark,
+    opacity: 0.7,
+    marginTop: Spacing[1],
+    textAlign: 'right',
+  },
+  composerNote: {
+    borderTopColor: Colors.warning.DEFAULT,
+    borderTopWidth: 2,
+    backgroundColor: Colors.warning.light,
+  },
+  noteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing[2],
+    paddingHorizontal: Spacing[1],
+    paddingBottom: Spacing[2],
+  },
+  noteBannerText: {
+    flex: 1,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: Colors.warning.dark,
+  },
+  actionButtonActive: {
+    backgroundColor: Colors.warning.light,
+    borderRadius: Spacing[1],
+  },
+  inputNote: {
+    borderColor: Colors.warning.DEFAULT,
+  },
+  sendButtonNote: {
+    backgroundColor: Colors.warning.DEFAULT,
   },
 });

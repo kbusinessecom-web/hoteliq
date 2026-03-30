@@ -33,6 +33,15 @@
           "resizeMode": "contain",
           "backgroundColor": "#000"
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#1A3C7A",
+          "androidMode": "default",
+          "androidCollapsedTitle": "HotelIQ"
+        }
       ]
     ],
     "experiments": {

@@ -91,10 +91,16 @@ const api = {
     
     getMessages: (id: string) => api.request(`/conversations/${id}/messages`),
     
-    sendMessage: (id: string, content: string) =>
+    sendMessage: (id: string, content: string, options?: { message_type?: string; mentions?: string[] }) =>
       api.request(`/conversations/${id}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content, direction: 'outbound', author: 'user' }),
+        body: JSON.stringify({
+          content,
+          direction: options?.message_type === 'internal_note' ? 'outbound' : 'outbound',
+          author: 'user',
+          message_type: options?.message_type || 'normal',
+          mentions: options?.mentions || [],
+        }),
       }),
   },
   
@@ -155,6 +161,34 @@ const api = {
     },
     
     getBrandProfile: () => api.request('/hotels/brand-profile'),
+  },
+
+  // Templates
+  templates: {
+    getAll: (category?: string) => {
+      const query = category ? `?category=${category}` : '';
+      return api.request(`/templates${query}`);
+    },
+    create: (data: { name: string; category: string; content: string; language?: string }) =>
+      api.request('/templates', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; category?: string; content?: string }) =>
+      api.request(`/templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    delete: (id: string) => api.request(`/templates/${id}`, { method: 'DELETE' }),
+    use: (id: string) => api.request(`/templates/${id}/use`, { method: 'POST' }),
+  },
+
+  // Team Members
+  users: {
+    getTeam: () => api.request('/users'),
+  },
+
+  // Push Notifications
+  pushTokens: {
+    register: (token: string, deviceType: string) =>
+      api.request('/push-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ token, device_type: deviceType }),
+      }),
   },
 };
 

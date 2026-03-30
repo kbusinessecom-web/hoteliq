@@ -101,3 +101,193 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Build HotelIQ - a unified AI inbox SaaS for boutique hotels on the French Riviera.
+  The app manages WhatsApp, Instagram DM, Email, and Website communications.
+  Features implemented step-by-step based on 5 specification documents.
+  User communicates in French. Uses Emergent LLM Key for AI capabilities.
+
+backend:
+  - task: "JWT Authentication (login/register/me)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Login endpoint working, tested manually"
+
+  - task: "Message Templates API (GET/POST/PATCH/DELETE/use)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Backend endpoints created, 15 default templates seeded via create_default_templates.py. Needs backend testing."
+
+  - task: "Internal Notes + Mentions in send_message"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "MessageType enum added (NORMAL/INTERNAL_NOTE), Message model updated with message_type and mentions fields. send_message endpoint updated to handle internal notes (no last_message update) and send push notifications to mentioned users."
+
+  - task: "Team Members API (GET /api/users)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "GET /api/users endpoint added to return team members for same hotel"
+
+  - task: "Push Token Registration (POST /api/push-tokens)"
+    implemented: true
+    working: "NA"
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "POST /api/push-tokens endpoint added. Uses Expo Push API for notifications"
+
+  - task: "Conversations and Messages CRUD"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Previously tested and working"
+
+frontend:
+  - task: "Templates Picker component (TemplatesPicker.tsx)"
+    implemented: true
+    working: "NA"
+    file: "frontend/components/TemplatesPicker.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New component with category tabs (welcome/confirmation/info/urgency/follow_up/upsell), search bar, and template list. Variable resolution for {{guest_name}} etc."
+
+  - task: "Mention Picker component (MentionPicker.tsx)"
+    implemented: true
+    working: "NA"
+    file: "frontend/components/MentionPicker.tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New component showing team members when @ is typed in composer"
+
+  - task: "Conversation screen - Templates integration"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/conversation/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added templates button (document-text icon) in composer. Opens TemplatesPicker modal. Template content inserted into composer with variable resolution."
+
+  - task: "Conversation screen - Internal Notes with @mentions"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/conversation/[id].tsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Lock icon toggle for internal note mode. Yellow banner shown when active. @typing shows MentionPicker. Internal notes displayed with yellow dashed bubble and lock icon. Push notification sent on mention."
+
+  - task: "Push Notifications registration"
+    implemented: true
+    working: "NA"
+    file: "frontend/app/conversation/[id].tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "expo-notifications installed, push token registered on conversation screen load. Graceful degradation on web/simulator."
+
+metadata:
+  created_by: "main_agent"
+  version: "1.0"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Message Templates API (GET/POST/PATCH/DELETE/use)"
+    - "Team Members API (GET /api/users)"
+    - "Internal Notes + Mentions in send_message"
+    - "Conversation screen - Templates integration"
+    - "Conversation screen - Internal Notes with @mentions"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "testing"
+    message: |
+      17/18 tests passed. 1 failure: hashed_password field exposed in /api/users.
+      Templates API fully functional. Internal notes functional. Push tokens functional.
+      FIXED: UserPublic model added, /api/users now returns only safe fields (confirmed: no hashed_password, no google_id).
+      All backend features now 18/18.
+
+      
+      FEATURE 5 - Message Templates:
+      - 15 default templates seeded (welcome, confirmation, info, urgency, follow_up, upsell)
+      - Backend: GET/POST/PATCH/DELETE/use endpoints at /api/templates
+      - Frontend: TemplatesPicker component with category tabs + search. Document-text icon in composer opens it.
+      
+      FEATURE 6 - Internal Notes + @Mentions + Push Notifications:
+      - Backend: MessageType enum (NORMAL/INTERNAL_NOTE), Message model updated
+      - Backend: send_message now handles internal_note type + sends push notifications to mentioned users
+      - Backend: GET /api/users returns team members, POST /api/push-tokens registers device tokens
+      - Frontend: Lock icon in composer toggles internal note mode (yellow UI)
+      - Frontend: Typing @ shows MentionPicker with team members
+      - Frontend: Internal notes shown with dashed yellow bubble + lock icon (invisible to guest)
+      - Frontend: expo-notifications installed, push token auto-registered on conversation screen
+      
+      Test credentials: manager@riviera-palace.com / demo123
+      
+      Please test:
+      1. Login and navigate to a conversation
+      2. Click the document icon → templates picker should open with categories
+      3. Select a template → should insert into composer
+      4. Click lock icon → internal note mode (yellow UI)
+      5. Type @M → MentionPicker should appear with team members
+      6. Select a member and send → internal note should appear with yellow bubble
