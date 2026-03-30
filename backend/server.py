@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Response, Request, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Response, Request, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -7,9 +7,13 @@ from datetime import datetime, timedelta, timezone
 import os
 import logging
 from typing import List, Optional
+import base64
 
 # Import WebSocket
 from websocket import sio, socket_app, emit_new_message, emit_conversation_updated, emit_assignment_changed
+
+# Import Document Analysis
+from document_service import document_analysis_service
 
 # Import models
 from models import (
@@ -436,8 +440,9 @@ async def get_ai_suggestion(
     # Get guest info
     guest = await db.guests.find_one({"guest_id": conv["guest_id"]}, {"_id": 0})
     
-    # Get hotel info
+    # Get hotel info + brand profile
     hotel = await db.hotels.find_one({"hotel_id": user.hotel_id}, {"_id": 0})
+    brand_profile = hotel.get('brand_profile') if hotel else None
     
     # Get conversation history
     messages = await db.messages.find(
@@ -445,13 +450,14 @@ async def get_ai_suggestion(
         {"_id": 0}
     ).sort("timestamp", 1).limit(10).to_list(10)
     
-    # Generate AI suggestion
+    # Generate AI suggestion with brand profile
     result = await ai_service.generate_response_suggestion(
         guest_message=suggestion_request.guest_message,
         guest_name=guest["name"] if guest else "Client",
         hotel_name=hotel["name"] if hotel else "Hôtel",
         conversation_history=messages,
-        language=suggestion_request.guest_language
+        language=suggestion_request.guest_language,
+        brand_profile=brand_profile
     )
     
     return AISuggestionResponse(**result)
@@ -514,6 +520,105 @@ async def get_dashboard_analytics(request: Request):
     
     # Return empty snapshot if none exists
     return AnalyticsSnapshot(hotel_id=user.hotel_id)
+
+# ============================================================================
+# DOCUMENT UPLOAD & ANALYSIS ENDPOINTS
+# ============================================================================
+
+@api_router.post("/documents/upload")
+async def upload_document(
+    file: UploadFile = File(...),
+    request: Request = None
+):
+    """Upload and analyze hotel document (PDF, DOCX, TXT)"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="User must have a hotel")
+    
+    # Validate file type
+    allowed_extensions = ['pdf', 'docx', 'doc', 'txt']
+    file_extension = file.filename.split('.')[-1].lower()
+    
+    if file_extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Type de fichier non supporté. Formats acceptés: {', '.join(allowed_extensions)}"
+        )
+    
+    # Validate file size (max 10MB)
+    file_content = await file.read()
+    if len(file_content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fichier trop volumineux (max 10MB)")
+    
+    try:
+        # Extract text from document
+        extracted_text = document_analysis_service.extract_text(file_content, file.filename)
+        
+        if not extracted_text or len(extracted_text) < 50:
+            raise HTTPException(status_code=400, detail="Le document ne contient pas assez de texte")
+        
+        # Get hotel info
+        hotel_doc = await db.hotels.find_one({\"hotel_id\": user.hotel_id}, {\"_id\": 0})
+        if not hotel_doc:
+            raise HTTPException(status_code=404, detail=\"Hotel not found\")
+        
+        hotel_name = hotel_doc.get('name', 'Hotel')
+        
+        # Analyze brand voice
+        brand_profile = await document_analysis_service.analyze_brand_voice(extracted_text, hotel_name)
+        
+        # Store document and analysis in hotel
+        document_data = {
+            "filename": file.filename,
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            "file_size": len(file_content),
+            "text_length": len(extracted_text),
+            "brand_profile": brand_profile
+        }
+        
+        # Update hotel with brand profile
+        await db.hotels.update_one(
+            {"hotel_id": user.hotel_id},
+            {
+                "$set": {"brand_profile": brand_profile},
+                "$push": {"training_documents": document_data}
+            }
+        )
+        
+        return {
+            "message": "Document analysé avec succès",
+            "filename": file.filename,
+            "text_length": len(extracted_text),
+            "brand_profile": brand_profile
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f\"Document upload error: {e}\")
+        raise HTTPException(status_code=500, detail="Erreur lors de l'analyse du document")
+
+@api_router.get("/hotels/brand-profile")
+async def get_brand_profile(request: Request):
+    """Get hotel's brand profile from analyzed documents"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=404, detail=\"No hotel found\")
+    
+    hotel_doc = await db.hotels.find_one(
+        {\"hotel_id\": user.hotel_id},
+        {\"_id\": 0, \"brand_profile\": 1, \"training_documents\": 1}
+    )
+    
+    if not hotel_doc:
+        raise HTTPException(status_code=404, detail=\"Hotel not found\")
+    
+    return {
+        \"brand_profile\": hotel_doc.get('brand_profile'),
+        \"documents_count\": len(hotel_doc.get('training_documents', []))
+    }
 
 # ============================================================================
 # HEALTH CHECK
