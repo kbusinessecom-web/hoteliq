@@ -215,6 +215,34 @@ export default function SettingsScreen() {
           />
         </Card>
 
+        {/* Integrations Section */}
+        <Text style={styles.sectionTitle}>Intégrations</Text>
+        <Card style={styles.section}>
+          <SettingItem
+            icon="logo-whatsapp"
+            label="WhatsApp Business"
+            onPress={() => router.push('/integrations')}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            icon="logo-instagram"
+            label="Instagram DM"
+            onPress={() => router.push('/integrations')}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            icon="mail"
+            label="Email SMTP personnalisé"
+            onPress={() => router.push('/integrations')}
+          />
+          <View style={styles.divider} />
+          <SettingItem
+            icon="git-network"
+            label="n8n / Appels Vocaux IA"
+            onPress={() => router.push('/integrations')}
+          />
+        </Card>
+
         {/* Notifications Section */}
         <Text style={styles.sectionTitle}>Notifications Push</Text>
         <Card style={styles.section}>

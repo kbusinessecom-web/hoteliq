@@ -218,6 +218,21 @@ const api = {
         body: JSON.stringify({ conversation_id: conversationId, content }),
       }),
   },
+
+  // Integrations
+  integrations: {
+    getAll: () => api.request('/integrations'),
+    update: (integrationType: string, config: Record<string, any>) =>
+      api.request(`/integrations/${integrationType}`, {
+        method: 'PATCH',
+        body: JSON.stringify(config),
+      }),
+    test: (integrationType: string) =>
+      api.request(`/integrations/${integrationType}/test`, {
+        method: 'POST',
+      }),
+    getWebhookInfo: () => api.request('/integrations/webhook-info'),
+  },
 };
 
 export default api;

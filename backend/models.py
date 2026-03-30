@@ -310,3 +310,52 @@ class AISuggestionResponse(BaseModel):
     suggestion: str
     confidence_score: float  # 0-1
     language: str
+
+# Integration Configuration Models
+class MetaWhatsAppConfig(BaseModel):
+    enabled: bool = False
+    api_token: Optional[str] = None
+    phone_number_id: Optional[str] = None
+    business_account_id: Optional[str] = None
+    webhook_verify_token: str = Field(default_factory=lambda: uuid.uuid4().hex[:16])
+    status: str = "disconnected"  # disconnected, connecting, connected, error
+    last_sync: Optional[datetime] = None
+
+class MetaInstagramConfig(BaseModel):
+    enabled: bool = False
+    access_token: Optional[str] = None
+    business_account_id: Optional[str] = None
+    webhook_verify_token: str = Field(default_factory=lambda: uuid.uuid4().hex[:16])
+    status: str = "disconnected"
+    last_sync: Optional[datetime] = None
+
+class SMTPConfig(BaseModel):
+    enabled: bool = False
+    host: Optional[str] = None
+    port: int = 587
+    username: Optional[str] = None
+    password: Optional[str] = None
+    from_email: Optional[str] = None
+    from_name: Optional[str] = None
+    use_tls: bool = True
+    status: str = "disconnected"
+
+class N8NWebhookConfig(BaseModel):
+    enabled: bool = False
+    webhook_url: Optional[str] = None
+    voice_call_webhook: Optional[str] = None
+    auth_header: Optional[str] = None
+    status: str = "disconnected"
+
+class HotelIntegrations(BaseModel):
+    hotel_id: str
+    meta_whatsapp: MetaWhatsAppConfig = Field(default_factory=MetaWhatsAppConfig)
+    meta_instagram: MetaInstagramConfig = Field(default_factory=MetaInstagramConfig)
+    smtp: SMTPConfig = Field(default_factory=SMTPConfig)
+    n8n: N8NWebhookConfig = Field(default_factory=N8NWebhookConfig)
+    webhook_base_url: str = ""  # Generated URL for receiving webhooks
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+class IntegrationUpdateRequest(BaseModel):
+    integration_type: str  # "meta_whatsapp", "meta_instagram", "smtp", "n8n"
+    config: Dict[str, Any]

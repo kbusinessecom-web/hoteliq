@@ -34,7 +34,9 @@ from models import (
     PushToken, ConversationInsight, InsightType, InsightStatus,
     WeeklyReport,
     LoginRequest, LoginResponse, SessionDataRequest,
-    AISuggestionRequest, AISuggestionResponse
+    AISuggestionRequest, AISuggestionResponse,
+    HotelIntegrations, MetaWhatsAppConfig, MetaInstagramConfig, SMTPConfig, N8NWebhookConfig,
+    IntegrationUpdateRequest
 )
 import httpx
 
@@ -616,6 +618,204 @@ async def simulate_incoming_message(data: SimulatedIncomingMessage, request: Req
     logger.info(f"Simulated incoming message in conversation {data.conversation_id}")
     
     return {"status": "success", "message": message.model_dump()}
+
+# ============================================================================
+# INTEGRATIONS ENDPOINTS
+# ============================================================================
+
+def mask_token(token: str, visible_chars: int = 4) -> str:
+    """Mask a token for display, showing only last few characters"""
+    if not token or len(token) <= visible_chars:
+        return "••••••••"
+    return "••••••••" + token[-visible_chars:]
+
+@api_router.get("/integrations")
+async def get_integrations(request: Request):
+    """Get hotel integrations configuration (tokens masked)"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="No hotel associated with user")
+    
+    # Get or create integrations config
+    integrations_doc = await db.integrations.find_one(
+        {"hotel_id": user.hotel_id},
+        {"_id": 0}
+    )
+    
+    if not integrations_doc:
+        # Create default integrations
+        integrations = HotelIntegrations(
+            hotel_id=user.hotel_id,
+            webhook_base_url=f"https://hoteliq.api/webhook/{user.hotel_id}"
+        )
+        await db.integrations.insert_one(integrations.model_dump())
+        integrations_doc = integrations.model_dump()
+    
+    # Mask sensitive tokens for response
+    response = dict(integrations_doc)
+    
+    # Mask WhatsApp tokens
+    if response.get("meta_whatsapp", {}).get("api_token"):
+        response["meta_whatsapp"]["api_token_masked"] = mask_token(response["meta_whatsapp"]["api_token"])
+        response["meta_whatsapp"]["api_token"] = None  # Don't send actual token
+    
+    # Mask Instagram tokens
+    if response.get("meta_instagram", {}).get("access_token"):
+        response["meta_instagram"]["access_token_masked"] = mask_token(response["meta_instagram"]["access_token"])
+        response["meta_instagram"]["access_token"] = None
+    
+    # Mask SMTP password
+    if response.get("smtp", {}).get("password"):
+        response["smtp"]["password_masked"] = "••••••••"
+        response["smtp"]["password"] = None
+    
+    # Mask n8n auth header
+    if response.get("n8n", {}).get("auth_header"):
+        response["n8n"]["auth_header_masked"] = mask_token(response["n8n"]["auth_header"])
+        response["n8n"]["auth_header"] = None
+    
+    return response
+
+@api_router.patch("/integrations/{integration_type}")
+async def update_integration(integration_type: str, config: dict, request: Request):
+    """Update a specific integration configuration"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="No hotel associated with user")
+    
+    valid_types = ["meta_whatsapp", "meta_instagram", "smtp", "n8n"]
+    if integration_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid integration type. Must be one of: {valid_types}")
+    
+    # Get existing integrations
+    integrations_doc = await db.integrations.find_one({"hotel_id": user.hotel_id})
+    
+    if not integrations_doc:
+        # Create default integrations first
+        integrations = HotelIntegrations(
+            hotel_id=user.hotel_id,
+            webhook_base_url=f"https://hoteliq.api/webhook/{user.hotel_id}"
+        )
+        await db.integrations.insert_one(integrations.model_dump())
+        integrations_doc = integrations.model_dump()
+    
+    # Update specific integration
+    update_data = {f"{integration_type}.{k}": v for k, v in config.items()}
+    update_data["updated_at"] = datetime.utcnow()
+    
+    await db.integrations.update_one(
+        {"hotel_id": user.hotel_id},
+        {"$set": update_data}
+    )
+    
+    # Simulate connection test for MOCK mode
+    status = "connected" if config.get("enabled") else "disconnected"
+    await db.integrations.update_one(
+        {"hotel_id": user.hotel_id},
+        {"$set": {f"{integration_type}.status": status}}
+    )
+    
+    logger.info(f"Updated {integration_type} integration for hotel {user.hotel_id}")
+    
+    return {"status": "success", "integration": integration_type, "connection_status": status}
+
+@api_router.post("/integrations/{integration_type}/test")
+async def test_integration(integration_type: str, request: Request):
+    """Test an integration connection (MOCKED for MVP)"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="No hotel associated with user")
+    
+    # Get integration config
+    integrations_doc = await db.integrations.find_one(
+        {"hotel_id": user.hotel_id},
+        {"_id": 0}
+    )
+    
+    if not integrations_doc:
+        raise HTTPException(status_code=404, detail="Integrations not configured")
+    
+    integration_config = integrations_doc.get(integration_type, {})
+    
+    # MOCK: Simulate connection test
+    # In production, this would actually test the connection
+    if integration_type == "meta_whatsapp":
+        if integration_config.get("api_token") and integration_config.get("phone_number_id"):
+            status = "connected"
+            message = "✅ Connexion WhatsApp Business réussie (SIMULÉ)"
+        else:
+            status = "error"
+            message = "❌ Token API ou Phone Number ID manquant"
+    
+    elif integration_type == "meta_instagram":
+        if integration_config.get("access_token") and integration_config.get("business_account_id"):
+            status = "connected"
+            message = "✅ Connexion Instagram réussie (SIMULÉ)"
+        else:
+            status = "error"
+            message = "❌ Access Token ou Business Account ID manquant"
+    
+    elif integration_type == "smtp":
+        if integration_config.get("host") and integration_config.get("username"):
+            status = "connected"
+            message = "✅ Connexion SMTP réussie (SIMULÉ)"
+        else:
+            status = "error"
+            message = "❌ Configuration SMTP incomplète"
+    
+    elif integration_type == "n8n":
+        if integration_config.get("webhook_url"):
+            status = "connected"
+            message = "✅ Webhook n8n configuré (SIMULÉ)"
+        else:
+            status = "error"
+            message = "❌ URL Webhook manquante"
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid integration type")
+    
+    # Update status in DB
+    await db.integrations.update_one(
+        {"hotel_id": user.hotel_id},
+        {"$set": {
+            f"{integration_type}.status": status,
+            f"{integration_type}.last_sync": datetime.utcnow() if status == "connected" else None
+        }}
+    )
+    
+    return {"status": status, "message": message}
+
+@api_router.get("/integrations/webhook-info")
+async def get_webhook_info(request: Request):
+    """Get webhook URLs for the hotel (to configure in Meta/n8n)"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="No hotel associated with user")
+    
+    # Get integrations to retrieve verify tokens
+    integrations_doc = await db.integrations.find_one(
+        {"hotel_id": user.hotel_id},
+        {"_id": 0}
+    )
+    
+    whatsapp_verify_token = integrations_doc.get("meta_whatsapp", {}).get("webhook_verify_token", "") if integrations_doc else ""
+    instagram_verify_token = integrations_doc.get("meta_instagram", {}).get("webhook_verify_token", "") if integrations_doc else ""
+    
+    # Generate webhook URLs (these would be real endpoints in production)
+    base_url = "https://hoteliq.api"  # Would be the actual API URL
+    
+    return {
+        "whatsapp_webhook_url": f"{base_url}/webhook/whatsapp/{user.hotel_id}",
+        "whatsapp_verify_token": whatsapp_verify_token,
+        "instagram_webhook_url": f"{base_url}/webhook/instagram/{user.hotel_id}",
+        "instagram_verify_token": instagram_verify_token,
+        "voice_callback_url": f"{base_url}/webhook/voice/{user.hotel_id}",
+        "note": "Ces URLs sont à configurer dans les plateformes respectives (Meta Developer Console, n8n)"
+    }
 
 # ============================================================================
 # GUEST ENDPOINTS

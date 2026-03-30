@@ -220,3 +220,66 @@ export interface AnalyticsSnapshot {
   estimated_captured_revenue: number;
   estimated_lost_revenue: number;
 }
+
+// Integration types
+export interface MetaWhatsAppConfig {
+  enabled: boolean;
+  api_token?: string;
+  api_token_masked?: string;
+  phone_number_id?: string;
+  business_account_id?: string;
+  webhook_verify_token?: string;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  last_sync?: string;
+}
+
+export interface MetaInstagramConfig {
+  enabled: boolean;
+  access_token?: string;
+  access_token_masked?: string;
+  business_account_id?: string;
+  webhook_verify_token?: string;
+  status: 'disconnected' | 'connecting' | 'connected' | 'error';
+  last_sync?: string;
+}
+
+export interface SMTPConfig {
+  enabled: boolean;
+  host?: string;
+  port: number;
+  username?: string;
+  password?: string;
+  password_masked?: string;
+  from_email?: string;
+  from_name?: string;
+  use_tls: boolean;
+  status: 'disconnected' | 'connected' | 'error';
+}
+
+export interface N8NWebhookConfig {
+  enabled: boolean;
+  webhook_url?: string;
+  voice_call_webhook?: string;
+  auth_header?: string;
+  auth_header_masked?: string;
+  status: 'disconnected' | 'connected' | 'error';
+}
+
+export interface HotelIntegrations {
+  hotel_id: string;
+  meta_whatsapp: MetaWhatsAppConfig;
+  meta_instagram: MetaInstagramConfig;
+  smtp: SMTPConfig;
+  n8n: N8NWebhookConfig;
+  webhook_base_url: string;
+  updated_at: string;
+}
+
+export interface WebhookInfo {
+  whatsapp_webhook_url: string;
+  whatsapp_verify_token: string;
+  instagram_webhook_url: string;
+  instagram_verify_token: string;
+  voice_callback_url: string;
+  note: string;
+}
