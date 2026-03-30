@@ -260,12 +260,12 @@ export default function ConversationScreen() {
           keyExtractor={(item) => item.message_id}
           contentContainerStyle={styles.messagesList}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: false })}
-          ListEmptyComponent=(
+          ListEmptyComponent={() => (
             <View style={styles.emptyMessages}>
               <Ionicons name="chatbubble-outline" size={48} color={Colors.neutral[300]} />
               <Text style={styles.emptyText}>Aucun message</Text>
             </View>
-          )
+          )}
         />
         
         {/* AI Suggestion */}
