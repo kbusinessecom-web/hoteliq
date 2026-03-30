@@ -537,14 +537,14 @@ async def get_ai_suggestion(
         {"_id": 0}
     ).sort("timestamp", 1).limit(10).to_list(10)
     
-    # Generate AI suggestion with brand profile
+    # Generate AI suggestion with hotel context
     result = await ai_service.generate_response_suggestion(
         guest_message=suggestion_request.guest_message,
         guest_name=guest["name"] if guest else "Client",
         hotel_name=hotel["name"] if hotel else "Hôtel",
         conversation_history=messages,
         language=suggestion_request.guest_language,
-        brand_profile=brand_profile
+        hotel_context=brand_profile
     )
     
     return AISuggestionResponse(**result)
