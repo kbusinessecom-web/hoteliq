@@ -209,6 +209,15 @@ const api = {
         body: JSON.stringify({ token, device_type: deviceType }),
       }),
   },
+
+  // Webhook Simulator (for demo/testing)
+  webhook: {
+    simulateIncoming: (conversationId: string, content: string) =>
+      api.request('/webhook/simulate-incoming', {
+        method: 'POST',
+        body: JSON.stringify({ conversation_id: conversationId, content }),
+      }),
+  },
 };
 
 export default api;

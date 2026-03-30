@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,19 +6,115 @@ import {
   ScrollView,
   Pressable,
   Alert,
+  Switch,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Device from 'expo-device';
 import Colors from '../../constants/Colors';
 import { FontSize, FontWeight } from '../../constants/Typography';
 import Spacing from '../../constants/Spacing';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import { useAuthStore } from '../../store/authStore';
+import api from '../../services/api';
+import notificationService from '../../services/notifications';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  useEffect(() => {
+    loadConversations();
+    checkNotificationStatus();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const data = await api.conversations.getAll();
+      setConversations(data.conversations || []);
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+    }
+  };
+
+  const checkNotificationStatus = async () => {
+    if (!Device.isDevice) {
+      setNotificationsEnabled(false);
+      return;
+    }
+    try {
+      const { status } = await (await import('expo-notifications')).getPermissionsAsync();
+      setNotificationsEnabled(status === 'granted');
+    } catch {
+      setNotificationsEnabled(false);
+    }
+  };
+
+  const handleToggleNotifications = async () => {
+    if (!Device.isDevice) {
+      Alert.alert('Non disponible', 'Les notifications push ne sont pas disponibles sur le web/simulateur.');
+      return;
+    }
+    
+    if (!notificationsEnabled) {
+      const token = await notificationService.registerPushToken();
+      if (token) {
+        setNotificationsEnabled(true);
+        Alert.alert('Succès', 'Notifications activées !');
+      } else {
+        Alert.alert('Erreur', 'Impossible d\'activer les notifications. Vérifiez les permissions dans les paramètres de l\'appareil.');
+      }
+    } else {
+      Alert.alert('Info', 'Pour désactiver les notifications, allez dans les paramètres de l\'appareil.');
+    }
+  };
+
+  const handleTestNotification = async () => {
+    if (conversations.length === 0) {
+      Alert.alert('Erreur', 'Aucune conversation disponible pour tester.');
+      return;
+    }
+
+    setIsSimulating(true);
+    try {
+      // Pick a random conversation
+      const randomConv = conversations[Math.floor(Math.random() * conversations.length)];
+      
+      // Simulate incoming message
+      await api.webhook.simulateIncoming(
+        randomConv.conversation_id,
+        'Bonjour, j\'ai une question concernant ma réservation. Pouvez-vous m\'aider ?'
+      );
+      
+      Alert.alert(
+        'Message simulé !',
+        'Un message entrant a été simulé. Vous devriez recevoir une notification push sur votre appareil mobile.',
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || 'Impossible de simuler le message.');
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
+  const handleLocalTestNotification = async () => {
+    try {
+      await notificationService.sendLocalNotification(
+        '🔔 Test HotelIQ',
+        'Ceci est une notification de test locale !',
+        { type: 'test' }
+      );
+      Alert.alert('Succès', 'Notification locale envoyée !');
+    } catch (error: any) {
+      Alert.alert('Erreur', error.message || 'Impossible d\'envoyer la notification.');
+    }
+  };
   
   const handleLogout = () => {
     Alert.alert(
@@ -118,6 +214,48 @@ export default function SettingsScreen() {
             onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
           />
         </Card>
+
+        {/* Notifications Section */}
+        <Text style={styles.sectionTitle}>Notifications Push</Text>
+        <Card style={styles.section}>
+          <View style={styles.settingItem}>
+            <View style={styles.settingLeft}>
+              <Ionicons name="notifications" size={24} color={Colors.neutral[600]} />
+              <Text style={styles.settingLabel}>Activer les notifications</Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleToggleNotifications}
+              trackColor={{ false: Colors.neutral[300], true: Colors.primary[400] }}
+              thumbColor={notificationsEnabled ? Colors.primary[600] : Colors.neutral[100]}
+            />
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.notificationTestSection}>
+            <Text style={styles.notificationInfo}>
+              {Platform.OS === 'web' 
+                ? '⚠️ Les notifications push ne sont pas disponibles sur le web. Testez sur un appareil mobile via Expo Go.'
+                : '🔔 Testez les notifications push pour vous assurer qu\'elles fonctionnent correctement.'}
+            </Text>
+            <View style={styles.testButtons}>
+              <Button
+                title="Test local"
+                variant="secondary"
+                size="sm"
+                onPress={handleLocalTestNotification}
+                style={styles.testButton}
+              />
+              <Button
+                title={isSimulating ? 'Simulation...' : 'Simuler message entrant'}
+                variant="primary"
+                size="sm"
+                onPress={handleTestNotification}
+                disabled={isSimulating}
+                style={styles.testButton}
+              />
+            </View>
+          </View>
+        </Card>
         
         {/* Account Section */}
         <Text style={styles.sectionTitle}>Compte</Text>
@@ -129,8 +267,8 @@ export default function SettingsScreen() {
           />
           <View style={styles.divider} />
           <SettingItem
-            icon="notifications"
-            label="Notifications"
+            icon="shield-checkmark"
+            label="Sécurité"
             onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
           />
           <View style={styles.divider} />
@@ -270,6 +408,22 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.neutral[200],
     marginLeft: Spacing[4] + 24 + Spacing[3],
+  },
+  notificationTestSection: {
+    padding: Spacing[4],
+  },
+  notificationInfo: {
+    fontSize: FontSize.sm,
+    color: Colors.neutral[600],
+    marginBottom: Spacing[3],
+    lineHeight: 20,
+  },
+  testButtons: {
+    flexDirection: 'row',
+    gap: Spacing[2],
+  },
+  testButton: {
+    flex: 1,
   },
   logoutButton: {
     marginTop: Spacing[8],

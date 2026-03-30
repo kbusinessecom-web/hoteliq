@@ -196,6 +196,8 @@ export interface WeeklyReport {
   error: string | null;
   created_at: string;
 }
+
+export interface MessageTemplate {
   template_id: string;
   hotel_id: string;
   name: string;

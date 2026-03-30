@@ -1,0 +1,153 @@
+<analysis>**User's preferred language**: French (INSTRUCT next agent to respond in French only).
+
+**original_problem_statement**: The user wants to build a SaaS application named HotelIQ from A to Z. It is a unified AI inbox for boutique hotels on the French Riviera (managing WhatsApp, Instagram DM, Email, Website). The app features a 4-step onboarding, real-time sync, document upload for brand-tailored AI responses, emojis, pre-defined message templates, internal team mentions (invisible to guests), AI history for analytics/upsell, push notifications, and automated weekly email reports. 
+PRODUCT REQUIREMENTS: 
+- Simulate Meta (WhatsApp/Instagram) authentications. 
+- Use mock data to start.
+- Authentication: Social login + classic JWT.
+- Email integration using Resend.
+- Emergent LLM Key for AI capabilities.
+
+**what currently exists?**: A functional full-stack app (FastAPI + MongoDB backend, Expo Router frontend). Features implemented include: JWT Auth, a seeded database with mock data, main navigation tabs (Inbox, Dashboard, Guests, Settings, Reports), a detailed Conversation screen (with AI-generated replies, templates, emojis, and internal notes), real-time WebSockets, document uploading for AI profiling, AI-powered Dashboard insights (upsell/loyalty opportunities), and an automated weekly report system using APScheduler and Resend.
+
+**Last working item**: 
+- **Last item agent was working**: Implementing the Weekly Manager Report via Resend. The agent successfully integrated  and  in the backend (), created the API endpoints ( and ), and built the frontend 'Rapports' tab (). The backend was tested via a python script and successfully sent the report email to the test address.
+- **Status**: USER VERIFICATION PENDING
+- **Agent Testing Done**: Y (Backend tested via python script; email successfully sent).
+- **Which testing method agent to use?**: Frontend testing agent / screenshot tool (to visually verify the new  screen renders correctly).
+- **User Testing Done**: N
+
+**All Pending/In progress Issue list**:
+Issue 1: Validate Frontend Reports Tab Rendering (Priority: P0)
+  - Attempted fixes: Created  and updated , but did not perform a screenshot or visual validation of the new tab.
+  - Next debug checklist: Check  rendering using the screenshot tool to ensure no runtime errors occur.
+  - Why fix this issue and what will be achieved with the fix? Ensures the newly added weekly reports UI is fully accessible to the user without crashes.
+  - Status: TESTING PENDING
+  - Is recurring issue? N
+  - Should Test frontend/backend/both after fix? Frontend
+  - Blocked on other issue: None
+
+**In progress Task List**:
+Task 1: Visual and E2E verification of Weekly Reports UI
+  - Where to resume: Load the frontend, navigate to the  tab, and verify data fetching and UI rendering.
+  - What will be achieved with this? Complete closure on the weekly reports feature.
+  - Status: TESTING PENDING
+  - Should Test frontend/backend/both after fix? Frontend
+  - Blocked on something: Nothing
+
+**Upcoming and Future Tasks**:
+Upcoming Tasks:
+- P0: Feature 9 - Push notifications complete flow (Basic  setup is there, but full push token registration and triggered notifications on new messages need implementation/verification).
+- P1: Settings screen completion (Secure input fields for Meta API keys / Webhook management).
+
+Future Tasks:
+- Social Login (Emergent-managed Google Auth).
+
+**Completed work in this session**:
+- Feature 5: Pre-defined message templates (, backend seeding/endpoints) (DONE).
+- Feature 6: Internal team mentions/notes (, UI updates in conversation) (DONE).
+- Feature 8: AI insights for Analytics/Upsell (, dashboard updates,  backend model) (DONE).
+- Bug Fix: Unmatched Route upon login caused by ambiguous Expo Router navigation  -> fixed by routing to  (DONE).
+- Integration: Automated weekly reports via Resend (, APScheduler) (DONE).
+- Frontend: Added 'Rapports' tab to bottom navigation (DONE).
+
+**Earlier issues found/mentioned but not fixed**:
+- Issue 1:  timeouts on long-running AI tasks
+  - Debug checklist: The testing subagent timed out when attempting to test  because processing 4 conversations with GPT-5.2 took ~30 seconds. 
+  - Why to solve this issue and what will be achieved with this? Prevents false negatives during testing. 
+  - Should Test frontend/backend/both after fix: backend
+  - Is recurring issue? Y (Use manual python script testing or increase subagent timeout for heavy AI generation routes).
+- Issue 2:  quote escaping in Python
+  - Debug checklist: Modifying complex Python dictionaries or string literals via standard regex replace frequently corrupts syntax. 
+  - Why to solve this issue and what will be achieved with this? Prevents backend crash errors. Use  or narrow line replacements.
+  - Should Test frontend/backend/both after fix: backend
+  - Is recurring issue? Y
+
+**Known issue recurrence from previous fork**:
+- Issue recurrence in previous fork: Unmatched Route / Layout Navigation ambiguity in Expo Router.
+- Recurrence count: 1
+- Status: RESOLVED (Fixed by explicitly specifying  instead of just ).
+
+**Code Architecture**:
+
+
+**Key Technical Concepts**:
+- **Frontend**: React Native, Expo Router (file-based routing), Zustand, Socket.io-client.
+- **Backend**: FastAPI, Motor (Async MongoDB), python-socketio, APScheduler.
+- **AI Integration**:  package using the Emergent LLM Key. Used for message suggestions, insight extraction (Upsell/Loyalty), and Weekly Report generation.
+- **Email**: Resend API.
+
+**key DB schema**:
+- : id, email, hashed_password, role, hotel_id
+- : id, name, brand_profile, notification_email
+- : id, hotel_id, guest_id, canal_type, status
+- : id, conversation_id, direction, content, author, message_type, mentions
+- : id, hotel_id, title, content, category
+- : id, hotel_id, conversation_id, type, potential_revenue, status
+- : id, hotel_id, week_label, content, insights_detected
+
+**changes in tech stack**:
+- Added  for email integrations.
+- Added  and  for background cron jobs (weekly reports).
+- Added  and  for upcoming push notifications.
+
+**All files of reference**:
+- : Core routing. Note: Endpoints for  are registered *before*  to prevent 404 errors. APScheduler initialized on startup.
+- : Generates LLM summaries of conversations and sends via Resend.
+- : Now includes AI Recommandations UI.
+- : New file created for viewing past weekly reports.
+- : Complex chat UI handling sockets, AI suggestions, Internal Notes (Feature 6), and Templates (Feature 5).
+
+**Areas that need refactoring**: 
+- : At over 1000 lines, this component handles too many responsibilities (Sockets, Rendering, Fetching, Composer, Insights, Templates, Mentions). Splitting into sub-components (, , ) is highly recommended.
+
+**key api endpoints**:
+- 
+- 
+- 
+-  (Generates & sends report)
+- 
+- 
+
+**Critical Info for New Agent**: 
+- **Resend Testing Limitation**: The user provided a valid Resend API Key, but it's a test key. It can ONLY send emails to the registered Resend account email (). To accommodate this, the hotel model was updated with  to route reports correctly without breaking the  login credentials.
+- **Language**: MUST communicate with the user in French.
+- **Routing Note**: Expo Router  failed with Unmatched Route. Always use  to specify the exact tab child.
+
+**documents and test reports created in this job**:
+- 
+- 
+- 
+
+**Last 10 User Messages and any pending HUMAN messages**:
+1. *(Latest)* Je veux que le destinataire soit personnalisé selon l établissement utilisateur - Requested personalized report recipient. (Status: COMPLETED - added  to Hotel schema).
+2. re_5Yw6NxQN_LgRrFSMzSs5z22v4C4DDDVRB - Provided Resend API Key. (Status: COMPLETED).
+3. 1/ resend 2/ non je n ai pas 3/ oui onglet rapports dans le dashboard 4/ oui - Confirmed Resend integration and 'Rapports' tab. (Status: COMPLETED).
+4. Je veux le rapport hebdomadaire manager envoye chaque lundi regroupant tout ce que tu as indiqué en enhancement - Requested automated weekly manager reports. (Status: COMPLETED).
+5. La preview ne fonctionne pas, débug cela - Reported preview failure after backend updates. (Status: RESOLVED - Fixed routing bug).
+6. La preview ne fonctionne pas, débug cela - Repeated preview issue. (Status: RESOLVED).
+7. Implémenté la feature 8 - Requested AI analysis feature. (Status: COMPLETED).
+8. 1/ oui continue comme cela dans cet ordre 2/ oui notification push autre membre - Confirmed action plan. (Status: COMPLETED).
+9. A implémenter : 5/template message prédéfinis personnalise 6/ mention team... - Initial request for the session. (Status: COMPLETED).
+
+**Project Health Check**:
+- Backend: Functional (All tests passing)
+- Frontend: Functional (Needs visual confirmation on  route)
+- Mocked: WhatsApp/Instagram Webhooks.
+
+**3rd Party Integrations**:
+- Emergent LLM Key (via ) — uses Emergent LLM Key.
+- Resend (Email generation) — requires User API Key (Provided and placed in ).
+
+**Testing status**:
+- Testing agent used after significant changes: YES (but timed out on heavy AI calls).
+- Troubleshoot agent used after agent stuck in loop: YES (Used to debug the Expo Router Unmatched Route issue).
+- Test files created: None.
+- Known regressions: None detected.
+
+**Credentials to test flow**:
+Email: 
+Password: 
+
+**What agent forgot to execute**:
+- The agent built the frontend  UI but did not visually test it via the  before finishing the task. Check this screen first to ensure it renders without crashing.</analysis>

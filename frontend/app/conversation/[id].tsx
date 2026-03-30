@@ -17,8 +17,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import Colors from '../../constants/Colors';
 import { FontSize, FontWeight } from '../../constants/Typography';
 import Spacing from '../../constants/Spacing';
@@ -67,7 +65,6 @@ export default function ConversationScreen() {
     loadConversation();
     loadTeamMembers();
     loadInsights();
-    registerPushNotifications();
     
     // Setup WebSocket listeners
     websocketService.onNewMessage(handleNewMessage);
@@ -134,26 +131,6 @@ export default function ConversationScreen() {
       setInsights((prev) => prev.filter((i) => i.insight_id !== insightId));
     } catch (error: any) {
       Alert.alert('Erreur', error.message);
-    }
-  };
-
-  const registerPushNotifications = async () => {
-    try {
-      if (!Device.isDevice) return; // Skip in simulator/web
-      const { status: existingStatus } = await Notifications.getPermissionsAsync();
-      let finalStatus = existingStatus;
-      if (existingStatus !== 'granted') {
-        const { status } = await Notifications.requestPermissionsAsync();
-        finalStatus = status;
-      }
-      if (finalStatus !== 'granted') return;
-
-      const tokenData = await Notifications.getExpoPushTokenAsync();
-      const deviceType = Platform.OS;
-      await api.pushTokens.register(tokenData.data, deviceType);
-      console.log('📲 Push token registered');
-    } catch (error) {
-      console.error('Push notification setup failed (expected on web):', error);
     }
   };
 

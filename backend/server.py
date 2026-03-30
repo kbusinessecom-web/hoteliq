@@ -23,6 +23,7 @@ from document_service import document_analysis_service
 from weekly_report_service import WeeklyReportService
 
 # Import models
+from pydantic import BaseModel as PydanticBaseModel
 from models import (
     Hotel, HotelCreate, User, UserCreate, UserPublic, UserRole, UserSession,
     Canal, CanalCreate, CanalType, CanalStatus,
@@ -98,6 +99,28 @@ async def send_push_notification(push_token: str, title: str, body: str, data: d
     except Exception as e:
         logger.error(f"Push notification error: {e}")
         return None
+
+async def notify_hotel_users(hotel_id: str, title: str, body: str, data: dict = None, exclude_user_id: str = None):
+    """Send push notifications to all users of a hotel"""
+    try:
+        # Get all push tokens for this hotel
+        query = {"hotel_id": hotel_id}
+        if exclude_user_id:
+            query["user_id"] = {"$ne": exclude_user_id}
+        
+        push_tokens = await db.push_tokens.find(query).to_list(100)
+        
+        for token_doc in push_tokens:
+            await send_push_notification(
+                push_token=token_doc['token'],
+                title=title,
+                body=body,
+                data=data
+            )
+        
+        logger.info(f"Sent {len(push_tokens)} push notifications for hotel {hotel_id}")
+    except Exception as e:
+        logger.error(f"Failed to notify hotel users: {e}")
 
 # ============================================================================
 # AUTH ENDPOINTS
@@ -523,6 +546,76 @@ async def get_ai_suggestion(
     )
     
     return AISuggestionResponse(**result)
+
+# ============================================================================
+# WEBHOOK SIMULATOR (For demo - simulates incoming messages)
+# ============================================================================
+
+class SimulatedIncomingMessage(PydanticBaseModel):
+    conversation_id: str
+    content: str
+
+@api_router.post("/webhook/simulate-incoming")
+async def simulate_incoming_message(data: SimulatedIncomingMessage, request: Request):
+    """
+    Simulate an incoming message from a guest.
+    This endpoint is for demo/testing purposes.
+    In production, this would be replaced by actual WhatsApp/Instagram webhooks.
+    """
+    user = await get_current_user(db, request)
+    
+    # Verify conversation belongs to user's hotel
+    conv = await db.conversations.find_one(
+        {"conversation_id": data.conversation_id, "hotel_id": user.hotel_id}
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    # Get guest info
+    guest = await db.guests.find_one({"guest_id": conv["guest_id"]})
+    guest_name = guest["name"] if guest else "Client"
+    
+    # Create the incoming message
+    message = Message(
+        conversation_id=data.conversation_id,
+        content=data.content,
+        direction=MessageDirection.INBOUND,
+        author=MessageAuthor.GUEST,
+        message_type=MessageType.NORMAL,
+    )
+    
+    await db.messages.insert_one(message.model_dump())
+    
+    # Update conversation
+    await db.conversations.update_one(
+        {"conversation_id": data.conversation_id},
+        {
+            "$set": {
+                "last_message": message.content[:100],
+                "last_message_at": message.timestamp,
+                "status": ConversationStatus.NEW if conv.get("status") == "resolved" else conv.get("status")
+            }
+        }
+    )
+    
+    # Emit real-time event
+    await emit_new_message(data.conversation_id, message.model_dump())
+    
+    # Send push notifications to all hotel users
+    await notify_hotel_users(
+        hotel_id=user.hotel_id,
+        title=f"💬 Nouveau message de {guest_name}",
+        body=data.content[:100],
+        data={
+            "conversation_id": data.conversation_id,
+            "type": "new_message",
+            "guest_name": guest_name
+        }
+    )
+    
+    logger.info(f"Simulated incoming message in conversation {data.conversation_id}")
+    
+    return {"status": "success", "message": message.model_dump()}
 
 # ============================================================================
 # GUEST ENDPOINTS
