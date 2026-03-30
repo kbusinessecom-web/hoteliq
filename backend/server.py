@@ -22,6 +22,7 @@ from models import (
     Guest, GuestCreate, Message, MessageCreate, MessageDirection, MessageAuthor,
     Conversation, ConversationUpdate, ConversationStatus,
     IATemplate, AnalyticsSnapshot,
+    MessageTemplate, MessageTemplateCreate, MessageTemplateUpdate,
     LoginRequest, LoginResponse, SessionDataRequest,
     AISuggestionRequest, AISuggestionResponse
 )
@@ -619,6 +620,106 @@ async def get_brand_profile(request: Request):
         "brand_profile": hotel_doc.get('brand_profile'),
         "documents_count": len(hotel_doc.get('training_documents', []))
     }
+
+# ============================================================================
+# MESSAGE TEMPLATES ENDPOINTS
+# ============================================================================
+
+@api_router.get("/templates", response_model=List[MessageTemplate])
+async def get_templates(request: Request, category: Optional[str] = None):
+    """Get all message templates for hotel"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        return []
+    
+    # Build query
+    query = {"hotel_id": user.hotel_id}
+    if category:
+        query["category"] = category
+    
+    templates = await db.message_templates.find(
+        query,
+        {"_id": 0}
+    ).sort("category", 1).sort("usage_count", -1).to_list(100)
+    
+    return [MessageTemplate(**t) for t in templates]
+
+@api_router.post("/templates", response_model=MessageTemplate)
+async def create_template(template_data: MessageTemplateCreate, request: Request):
+    """Create a new message template"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=400, detail="User must have a hotel")
+    
+    template = MessageTemplate(
+        hotel_id=user.hotel_id,
+        **template_data.model_dump(),
+        created_by=user.user_id
+    )
+    
+    await db.message_templates.insert_one(template.model_dump())
+    return template
+
+@api_router.patch("/templates/{template_id}", response_model=MessageTemplate)
+async def update_template(
+    template_id: str,
+    update_data: MessageTemplateUpdate,
+    request: Request
+):
+    """Update a message template"""
+    user = await get_current_user(db, request)
+    
+    # Prepare update
+    update_dict = {k: v for k, v in update_data.model_dump().items() if v is not None}
+    
+    if not update_dict:
+        raise HTTPException(status_code=400, detail="No update data provided")
+    
+    result = await db.message_templates.update_one(
+        {"template_id": template_id, "hotel_id": user.hotel_id},
+        {"$set": update_dict}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    # Return updated template
+    template_doc = await db.message_templates.find_one(
+        {"template_id": template_id},
+        {"_id": 0}
+    )
+    return MessageTemplate(**template_doc)
+
+@api_router.delete("/templates/{template_id}")
+async def delete_template(template_id: str, request: Request):
+    """Delete a message template"""
+    user = await get_current_user(db, request)
+    
+    result = await db.message_templates.delete_one(
+        {"template_id": template_id, "hotel_id": user.hotel_id, "is_default": False}
+    )
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found or cannot delete default template")
+    
+    return {"message": "Template deleted successfully"}
+
+@api_router.post("/templates/{template_id}/use")
+async def use_template(template_id: str, request: Request):
+    """Increment usage count when template is used"""
+    user = await get_current_user(db, request)
+    
+    result = await db.message_templates.update_one(
+        {"template_id": template_id, "hotel_id": user.hotel_id},
+        {"$inc": {"usage_count": 1}}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    return {"message": "Usage count incremented"}
 
 # ============================================================================
 # HEALTH CHECK

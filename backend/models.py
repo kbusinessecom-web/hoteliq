@@ -186,6 +186,29 @@ class AnalyticsSnapshot(BaseModel):
     estimated_captured_revenue: float = 0.0
     estimated_lost_revenue: float = 0.0
 
+class MessageTemplate(BaseModel):
+    template_id: str = Field(default_factory=lambda: f"tpl_{uuid.uuid4().hex[:12]}")
+    hotel_id: str
+    name: str
+    category: str  # "welcome", "confirmation", "info", "urgency", "follow_up", "upsell"
+    content: str  # Template with {{variables}}
+    language: str = "fr"
+    is_default: bool = False  # System templates
+    usage_count: int = 0
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by: str  # user_id
+
+class MessageTemplateCreate(BaseModel):
+    name: str
+    category: str
+    content: str
+    language: str = "fr"
+
+class MessageTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    content: Optional[str] = None
+
 # Auth Models
 class LoginRequest(BaseModel):
     email: EmailStr
