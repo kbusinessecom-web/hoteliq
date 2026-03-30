@@ -23,6 +23,7 @@ import Spacing from '../../constants/Spacing';
 import Card from '../../components/Card';
 import Button from '../../components/Button';
 import CanalBadge from '../../components/CanalBadge';
+import EmojiPicker from '../../components/EmojiPicker';
 import api from '../../services/api';
 import websocketService from '../../services/websocket';
 import { Conversation, Message, MessageDirection, MessageAuthor, Guest, AISuggestion } from '../../types';
@@ -41,9 +42,11 @@ export default function ConversationScreen() {
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [showGuestPanel, setShowGuestPanel] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   
   const flatListRef = useRef<FlatList>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const inputRef = useRef<TextInput>(null);
   
   useEffect(() => {
     loadConversation();
@@ -183,7 +186,14 @@ export default function ConversationScreen() {
     if (aiSuggestion) {
       setMessageText(aiSuggestion.suggestion);
       setAiSuggestion(null);
+      inputRef.current?.focus();
     }
+  };
+  
+  const handleEmojiSelect = (emoji: string) => {
+    setMessageText((prev) => prev + emoji);
+    // Keep picker open for multiple emoji selection
+    // User can close it manually
   };
   
   const handleMarkResolved = async () => {
@@ -395,10 +405,18 @@ export default function ConversationScreen() {
             >
               <Ionicons name="checkmark-circle" size={24} color={Colors.success.DEFAULT} />
             </Pressable>
+            
+            <Pressable
+              onPress={() => setShowEmojiPicker(true)}
+              style={styles.actionButton}
+            >
+              <Ionicons name="happy" size={24} color={Colors.accent[600]} />
+            </Pressable>
           </View>
           
           <View style={styles.inputContainer}>
             <TextInput
+              ref={inputRef}
               style={styles.input}
               value={messageText}
               onChangeText={handleTextChange}
@@ -434,6 +452,13 @@ export default function ConversationScreen() {
             </View>
           )}
         </View>
+        
+        {/* Emoji Picker */}
+        <EmojiPicker
+          visible={showEmojiPicker}
+          onClose={() => setShowEmojiPicker(false)}
+          onEmojiSelect={handleEmojiSelect}
+        />
         
         {/* Loading AI Indicator */}
         {isLoadingAI && (
