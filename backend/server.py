@@ -8,6 +8,9 @@ import os
 import logging
 from typing import List, Optional
 
+# Import WebSocket
+from websocket import sio, socket_app, emit_new_message, emit_conversation_updated, emit_assignment_changed
+
 # Import models
 from models import (
     Hotel, HotelCreate, User, UserCreate, UserRole, UserSession,
@@ -338,6 +341,14 @@ async def update_conversation(
         {"conversation_id": conversation_id},
         {"_id": 0}
     )
+    
+    # Emit real-time event
+    await emit_conversation_updated(conversation_id, conv_doc)
+    
+    # Emit assignment change if applicable
+    if 'assigned_to' in update_dict:
+        await emit_assignment_changed(conversation_id, update_dict['assigned_to'], user.user_id)
+    
     return Conversation(**conv_doc)
 
 @api_router.get("/conversations/{conversation_id}/messages", response_model=List[Message])
@@ -397,6 +408,9 @@ async def send_message(
             }
         }
     )
+    
+    # Emit real-time event
+    await emit_new_message(conversation_id, message.model_dump())
     
     return message
 
@@ -525,6 +539,9 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+# Mount Socket.IO
+app.mount("/socket.io", socket_app)
 
 if __name__ == "__main__":
     import uvicorn

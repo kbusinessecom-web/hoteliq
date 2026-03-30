@@ -24,10 +24,13 @@ import Card from '../../components/Card';
 import Button from '../../components/Button';
 import CanalBadge from '../../components/CanalBadge';
 import api from '../../services/api';
+import websocketService from '../../services/websocket';
 import { Conversation, Message, MessageDirection, MessageAuthor, Guest, AISuggestion } from '../../types';
+import { useAuthStore } from '../../store/authStore';
 
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { user } = useAuthStore();
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [guest, setGuest] = useState<Guest | null>(null);
@@ -37,12 +40,82 @@ export default function ConversationScreen() {
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
   const [isLoadingAI, setIsLoadingAI] = useState(false);
   const [showGuestPanel, setShowGuestPanel] = useState(false);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
   
   const flatListRef = useRef<FlatList>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   useEffect(() => {
     loadConversation();
+    
+    // Setup WebSocket listeners
+    websocketService.onNewMessage(handleNewMessage);
+    websocketService.onUserTyping(handleUserTyping);
+    websocketService.onUserTypingStop(handleUserTypingStop);
+    
+    // Join conversation room
+    websocketService.joinConversation(id);
+    
+    return () => {
+      // Cleanup
+      websocketService.offNewMessage();
+      websocketService.offUserTyping();
+      websocketService.offUserTypingStop();
+      websocketService.leaveConversation(id);
+    };
   }, [id]);
+  
+  const handleNewMessage = (data: any) => {
+    if (data.conversation_id === id) {
+      console.log('📨 New message received via WebSocket');
+      const newMessage: Message = data.message;
+      setMessages((prev) => {
+        // Avoid duplicates
+        if (prev.some(m => m.message_id === newMessage.message_id)) {
+          return prev;
+        }
+        return [...prev, newMessage];
+      });
+      
+      // Scroll to bottom
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  };
+  
+  const handleUserTyping = (data: any) => {
+    if (data.conversation_id === id) {
+      setTypingUser(data.user_name);
+    }
+  };
+  
+  const handleUserTypingStop = (data: any) => {
+    if (data.conversation_id === id) {
+      setTypingUser(null);
+    }
+  };
+  
+  const handleTextChange = (text: string) => {
+    setMessageText(text);
+    
+    // Emit typing start
+    if (text.length > 0 && user) {
+      websocketService.emitTypingStart(id, user.name);
+      
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      
+      // Stop typing after 3 seconds of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        websocketService.emitTypingStop(id);
+      }, 3000);
+    } else {
+      websocketService.emitTypingStop(id);
+    }
+  };
   
   const loadConversation = async () => {
     try {
@@ -328,7 +401,7 @@ export default function ConversationScreen() {
             <TextInput
               style={styles.input}
               value={messageText}
-              onChangeText={setMessageText}
+              onChangeText={handleTextChange}
               placeholder={`Répondre via ${conversation?.canal_type}...`}
               placeholderTextColor={Colors.neutral[400]}
               multiline
@@ -353,6 +426,13 @@ export default function ConversationScreen() {
               )}
             </Pressable>
           </View>
+          
+          {/* Typing Indicator */}
+          {typingUser && (
+            <View style={styles.typingIndicator}>
+              <Text style={styles.typingText}>{typingUser} est en train d'écrire...</Text>
+            </View>
+          )}
         </View>
         
         {/* Loading AI Indicator */}
@@ -666,5 +746,17 @@ const styles = StyleSheet.create({
   loadingAIText: {
     fontSize: FontSize.sm,
     color: Colors.accent[700],
+  },
+  typingIndicator: {
+    paddingHorizontal: Spacing[3],
+    paddingVertical: Spacing[1],
+    backgroundColor: Colors.neutral[100],
+    borderTopWidth: 1,
+    borderTopColor: Colors.neutral[200],
+  },
+  typingText: {
+    fontSize: FontSize.sm,
+    color: Colors.neutral[600],
+    fontStyle: 'italic',
   },
 });
