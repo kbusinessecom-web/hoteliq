@@ -8,6 +8,8 @@ class WebSocketService {
   private socket: Socket | null = null;
   private userId: string | null = null;
   private currentConversationId: string | null = null;
+  private connectionAttempts: number = 0;
+  private maxAttempts: number = 3;
 
   connect(userId: string) {
     if (this.socket?.connected) {
@@ -15,37 +17,56 @@ class WebSocketService {
       return;
     }
 
+    // Skip WebSocket in environments where it won't work reliably
+    if (!API_URL) {
+      console.log('⚠️ WebSocket: No API URL configured, skipping connection');
+      return;
+    }
+
     this.userId = userId;
     const token = getAuthToken();
 
-    this.socket = io(`${API_URL}`, {
-      path: '/socket.io/',
-      transports: ['websocket', 'polling'],
-      auth: {
-        user_id: userId,
-        token,
-      },
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 5,
-    });
+    try {
+      this.socket = io(`${API_URL}`, {
+        path: '/socket.io/',
+        transports: ['websocket', 'polling'],
+        auth: {
+          user_id: userId,
+          token,
+        },
+        reconnection: true,
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        reconnectionAttempts: 3,
+        timeout: 10000,
+      });
 
-    this.socket.on('connect', () => {
-      console.log('✅ WebSocket connected:', this.socket?.id);
-    });
+      this.socket.on('connect', () => {
+        console.log('✅ WebSocket connected:', this.socket?.id);
+        this.connectionAttempts = 0;
+      });
 
-    this.socket.on('disconnect', (reason) => {
-      console.log('❌ WebSocket disconnected:', reason);
-    });
+      this.socket.on('disconnect', (reason) => {
+        console.log('⚠️ WebSocket disconnected:', reason);
+      });
 
-    this.socket.on('connected', (data) => {
-      console.log('📡 Server message:', data.message);
-    });
+      this.socket.on('connected', (data) => {
+        console.log('📡 Server message:', data.message);
+      });
 
-    this.socket.on('connect_error', (error) => {
-      console.error('WebSocket connection error:', error);
-    });
+      this.socket.on('connect_error', (error) => {
+        this.connectionAttempts++;
+        if (this.connectionAttempts >= this.maxAttempts) {
+          console.log('⚠️ WebSocket: Connection failed after', this.maxAttempts, 'attempts. Real-time features disabled.');
+          // Stop trying to reconnect
+          this.socket?.disconnect();
+        } else {
+          console.log('⚠️ WebSocket: Connection attempt', this.connectionAttempts, '/', this.maxAttempts);
+        }
+      });
+    } catch (error) {
+      console.log('⚠️ WebSocket: Failed to initialize, real-time features disabled');
+    }
   }
 
   disconnect() {
@@ -54,13 +75,14 @@ class WebSocketService {
       this.socket = null;
       this.userId = null;
       this.currentConversationId = null;
+      this.connectionAttempts = 0;
       console.log('WebSocket disconnected');
     }
   }
 
   joinConversation(conversationId: string) {
     if (!this.socket?.connected) {
-      console.warn('WebSocket not connected');
+      // Silently skip - not critical
       return;
     }
 

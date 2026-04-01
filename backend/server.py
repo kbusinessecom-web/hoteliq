@@ -301,6 +301,90 @@ async def get_my_hotel(request: Request):
     
     return Hotel(**hotel_doc)
 
+@api_router.patch("/hotels/my")
+async def update_my_hotel(request: Request):
+    """Update current user's hotel"""
+    user = await get_current_user(db, request)
+    
+    if not user.hotel_id:
+        raise HTTPException(status_code=404, detail="No hotel found")
+    
+    body = await request.json()
+    
+    # Build update data
+    update_data = {}
+    allowed_fields = ['name', 'city', 'classification', 'room_count', 'nb_chambres', 
+                      'notification_email', 'brand_profile']
+    
+    for field in allowed_fields:
+        if field in body:
+            update_data[field] = body[field]
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    
+    await db.hotels.update_one(
+        {"hotel_id": user.hotel_id},
+        {"$set": update_data}
+    )
+    
+    # Return updated hotel
+    hotel_doc = await db.hotels.find_one({"hotel_id": user.hotel_id}, {"_id": 0})
+    return hotel_doc
+
+# ============================================================================
+# USER PROFILE ENDPOINTS
+# ============================================================================
+
+@api_router.patch("/users/profile")
+async def update_user_profile(request: Request):
+    """Update current user's profile"""
+    user = await get_current_user(db, request)
+    body = await request.json()
+    
+    update_data = {}
+    if 'name' in body:
+        update_data['name'] = body['name']
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+    
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": update_data}
+    )
+    
+    # Return updated user
+    user_doc = await db.users.find_one({"user_id": user.user_id}, {"_id": 0, "hashed_password": 0})
+    return user_doc
+
+class ChangePasswordRequest(PydanticBaseModel):
+    current_password: str
+    new_password: str
+
+@api_router.post("/users/change-password")
+async def change_password(data: ChangePasswordRequest, request: Request):
+    """Change current user's password"""
+    user = await get_current_user(db, request)
+    
+    # Get user with password
+    user_doc = await db.users.find_one({"user_id": user.user_id})
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify current password
+    if not verify_password(data.current_password, user_doc.get('hashed_password', '')):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    
+    # Update password
+    new_hashed = hash_password(data.new_password)
+    await db.users.update_one(
+        {"user_id": user.user_id},
+        {"$set": {"hashed_password": new_hashed}}
+    )
+    
+    return {"status": "success", "message": "Mot de passe modifié avec succès"}
+
 # ============================================================================
 # CANAL ENDPOINTS
 # ============================================================================

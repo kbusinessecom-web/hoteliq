@@ -204,14 +204,14 @@ export default function SettingsScreen() {
           <SettingItem
             icon="business"
             label="Informations de l'hôtel"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
+            onPress={() => router.push('/hotel-profile')}
           />
           <View style={styles.divider} />
           <SettingItem
             icon="link"
             label="Canaux connectés"
             value="4"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
+            onPress={() => router.push('/channels')}
           />
         </Card>
 
@@ -291,19 +291,13 @@ export default function SettingsScreen() {
           <SettingItem
             icon="person"
             label="Profil"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
+            onPress={() => router.push('/user-profile')}
           />
           <View style={styles.divider} />
           <SettingItem
             icon="shield-checkmark"
             label="Sécurité"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
-          />
-          <View style={styles.divider} />
-          <SettingItem
-            icon="shield-checkmark"
-            label="Sécurité"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
+            onPress={() => router.push('/security')}
           />
         </Card>
         
@@ -315,7 +309,7 @@ export default function SettingsScreen() {
           <SettingItem
             icon="help-circle"
             label="Aide et support"
-            onPress={() => Alert.alert('En cours', 'Fonctionnalité à venir')}
+            onPress={() => router.push('/help')}
           />
         </Card>
         

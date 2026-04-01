@@ -123,6 +123,21 @@ const api = {
     getById: (id: string) => api.request(`/guests/${id}`),
   },
   
+  // Hotels
+  hotels: {
+    getMy: () => api.request('/hotels/my'),
+    update: (data: any) =>
+      api.request('/hotels/my', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+  },
+
+  // Canals (Channels)
+  canals: {
+    getAll: () => api.request('/canals'),
+  },
+  
   // Reports
   reports: {
     getAll: () => api.request('/reports'),
@@ -199,6 +214,16 @@ const api = {
   // Team Members
   users: {
     getTeam: () => api.request('/users'),
+    updateProfile: (data: { name: string }) =>
+      api.request('/users/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
+    changePassword: (currentPassword: string, newPassword: string) =>
+      api.request('/users/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      }),
   },
 
   // Push Notifications

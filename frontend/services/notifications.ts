@@ -73,9 +73,10 @@ class NotificationService {
         return null;
       }
 
-      // Get Expo push token
+      // Get Expo push token with explicit projectId
+      const projectId = 'fea7ca9c-9133-4cd1-99a9-6b952edc3932';
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId: undefined, // Uses project ID from app.json
+        projectId: projectId,
       });
       
       const token = tokenData.data;
@@ -87,7 +88,8 @@ class NotificationService {
 
       return token;
     } catch (error) {
-      console.error('📱 Push token registration failed:', error);
+      // Silently fail - notifications are not critical for app functionality
+      console.log('📱 Push notifications unavailable (this is normal in dev mode)');
       return null;
     }
   }
